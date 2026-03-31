@@ -1,16 +1,20 @@
 package com.example.Poker.controller;
 
-import com.example.Poker.dto.GameDto.*;
+import com.example.Poker.service.MatchRoomService;
+import com.example.Poker.dto.MoveDTO;
+import com.example.Poker.dto.PokerDTO;
+
 import org.springframework.messaging.handler.annotation.DestinationVariable;
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.handler.annotation.SendTo;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Controller;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.messaging.handler.annotation.Payload;
+
 import java.security.Principal;
-import org.springframework.beans.factory.annotation.*;
 import java.util.ArrayList;
 import java.util.List;
-import com.example.Poker.service.MatchRoomService;
 
 @Controller
 public class MatchRoomController {
@@ -20,14 +24,15 @@ public class MatchRoomController {
         this.matchRoomService = matchRoomService; 
     }
 
-    @MessageMapping("/game/{gameId}")
-    public void requestMove(@DestinationVariable Long gameId,Principal principal,MoveDTO move) {
+    @MessageMapping("/game/{gameId}/move")
+    @SendTo("/topic/game/{gameId}")
+    public PokerDTO requestMove(@DestinationVariable Long gameId,Principal principal,@Payload MoveDTO move) {
         if (principal == null) {
             System.out.println("ERROR: Principal is null. Is the user authenticated?");
             return null;
         }
         String username = principal.getName();
 
-        matchRoomService.processMove(gameId,username,move);
+        return matchRoomService.processMove(gameId,username,move);
     }
 }

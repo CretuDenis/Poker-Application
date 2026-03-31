@@ -1,11 +1,16 @@
 package com.example.Poker.service;
 
 import org.springframework.stereotype.Service;
+
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
-import .MatchRoomService;
 import java.util.UUID;
+import java.util.List;
+import java.util.ArrayList;
+
 import com.example.Poker.game.Poker;
+import com.example.Poker.service.MatchRoomService;
+
 
 @Service
 public class MatchmakingQueueService {
@@ -23,7 +28,11 @@ public class MatchmakingQueueService {
         if(this.size() >= Poker.numPlayers) {
             List<String> players = new ArrayList<>();
             for (int i = 0; i < Poker.numPlayers; i++) {
-                match.add(this.dequeue());
+                try {
+                    players.add(this.dequeue());
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
             }
             
             matchService.createGame(players);

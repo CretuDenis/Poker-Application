@@ -1,5 +1,6 @@
 package com.example.Poker.game;
 import com.example.Poker.game.Card;
+import com.example.Poker.dto.PokerPlayerDTO;
 
 public class PokerPlayer {
     public Integer balance;
@@ -32,6 +33,10 @@ public class PokerPlayer {
     public void fold() {
         first = null;
         second = null;
+    }
+
+    public PokerPlayerDTO toDto() {
+        return new PokerPlayerDTO(name,balance,bet);
     }
 
     public void print() {

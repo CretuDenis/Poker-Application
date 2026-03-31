@@ -1,17 +1,19 @@
 package com.example.Poker.controller;
 
-import com.example.Poker.dto.GameDto.*;
+import com.example.Poker.service.MatchRoomService;
+import com.example.Poker.service.MatchmakingQueueService;
+
 import org.springframework.messaging.handler.annotation.DestinationVariable;
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.handler.annotation.SendTo;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Controller;
-import com.example.Poker.service.MatchmakingQueueService;
-import java.security.Principal;
 import org.springframework.beans.factory.annotation.*;
+
+import java.security.Principal;
 import java.util.ArrayList;
 import java.util.List;
-import com.example.Poker.service.MatchRoomService;
+
 
 @Controller
 public class MatchmakingQueueController {
@@ -25,7 +27,7 @@ public class MatchmakingQueueController {
         this.matchRoomService = matchRoomService; 
     }
 
-    @MessageMapping("/matchmaking/join")
+    @MessageMapping("/queue/join")
     public void joinQueue(Principal principal) {
         if (principal == null) {
             System.out.println("ERROR: Principal is null. Is the user authenticated?");
@@ -34,6 +36,6 @@ public class MatchmakingQueueController {
 
         String username = principal.getName();
         queueService.processJoinRequest(username);
-        //messagingTemplate.convertAndSendToUser(username, "/queue/reply", "You are now in the queue!");
+        messagingTemplate.convertAndSendToUser(username, "/queue/reply", "JOINED");
     }
 }

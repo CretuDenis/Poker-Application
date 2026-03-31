@@ -1,5 +1,7 @@
 package com.example.Poker.game;
 
+import com.example.Poker.dto.CardDTO;
+
 public record Card(Symbol symbol,Suit suit) {
     public enum Suit {
         HEARTS("Red"),
@@ -40,6 +42,10 @@ public record Card(Symbol symbol,Suit suit) {
 
         public int getValue()      { return value; }
         public String getDisplay() { return display; }
+    }
+
+    public CardDTO toDto() {
+        return new CardDTO(symbol.name(),suit.name());
     }
 
     public void print() {

@@ -4,6 +4,11 @@ import com.example.Poker.game.PokerPlayer;
 import com.example.Poker.game.CardDeck;
 import com.example.Poker.game.PokerScore;
 import com.example.Poker.game.PokerMessage;
+import com.example.Poker.dto.PokerDTO;
+import com.example.Poker.dto.HandDTO;
+import com.example.Poker.dto.PokerPlayerDTO;
+import com.example.Poker.dto.MoveDTO;
+import com.example.Poker.dto.CardDTO;
 import java.util.List;
 import java.util.ArrayList;
 import java.util.Scanner;
@@ -14,7 +19,7 @@ import java.lang.Math;
 
 
 public class Poker {
-    public final Integer numPlayers = 2;
+    public static final Integer numPlayers = 2;
     
     public enum PokerError {
         SUCCESS,
@@ -766,10 +771,19 @@ public class Poker {
         }
     }
 
+    public HandDTO getPlayerHand(String username) {
+        for (PokerPlayer player : players) {
+            if (player.name.equals(username) && !player.folded()) {
+                return new HandDTO(player.first.toDto(),player.second.toDto());
+            }
+        }
+        return null;
+    }
+
     // TODO: Folding is broken it can skip players 
-    public PokerError handleMessage(PokerMessage message) {
+    public PokerError handleMessage(String playerName,MoveDTO message) {
         PokerPlayer speakingPlayer = players.get(speakingIndex);
-        if (!message.playerName().equals(speakingPlayer.name)) return PokerError.MESSAGE_REQUESTED_BY_NON_SPEAKING;
+        if (!playerName.equals(speakingPlayer.name)) return PokerError.MESSAGE_REQUESTED_BY_NON_SPEAKING;
         if (speakingPlayer.folded()) return PokerError.MESSAGE_REQUESTED_BY_FOLDED;
 
         if (message.action().equals("CALL")) {
@@ -777,8 +791,8 @@ public class Poker {
             int toBet = maxBet - speakingPlayer.bet; 
             if(toBet == 0) return PokerError.PLAYER_SHOULD_CHECK;
             if(!speakingPlayer.tryBet(toBet)) return PokerError.INSUFICIENT_BALANCE;
-        } else if (message.action().equals("RAISE") && !message.amount().isEmpty()) {
-            Integer amount = message.amount().get();
+        } else if (message.action().equals("RAISE") && message.amount() != null) {
+            Integer amount = message.amount();
             if(!speakingPlayer.tryBet(amount)) return PokerError.INSUFICIENT_BALANCE;
             raiseIndex = speakingIndex;
         } else if (message.action().equals("CHECK")) {
@@ -866,6 +880,30 @@ public class Poker {
         roundSetup();
 
         return PokerError.SUCCESS; 
+    }
+
+    public PokerDTO toDto() {
+        List<PokerPlayerDTO> playersDto = new ArrayList<>();
+
+        for(PokerPlayer player : players) {
+            playersDto.add(player.toDto());
+        }
+
+        CardDTO[] communityCardsDtos = new CardDTO[5];
+        for(int i = 0; i < 5; i++) {
+            if (communityCards[i] != null) {
+                communityCardsDtos[i] = communityCards[i].toDto();
+            }
+        }
+        
+        return new PokerDTO(playersDto,communityCardsDtos,buttonIndex);
+    }
+
+    public boolean playerIsPlaying(String username) {
+        for(PokerPlayer player : players) {
+            if(username == player.name) return true;
+        }
+        return false;
     }
 
     public void print() {
