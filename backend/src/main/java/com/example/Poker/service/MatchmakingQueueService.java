@@ -39,6 +39,14 @@ public class MatchmakingQueueService {
         }
     }
 
+    public synchronized void processLeaveRequest() {
+        try {
+            dequeue();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
     public void enqueue(String username)  {
         matchmakingQueue.offer(username);
     }

@@ -13,6 +13,7 @@ import org.springframework.beans.factory.annotation.*;
 import java.security.Principal;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 
 @Controller
@@ -36,6 +37,17 @@ public class MatchmakingQueueController {
 
         String username = principal.getName();
         queueService.processJoinRequest(username);
-        messagingTemplate.convertAndSendToUser(username, "/queue/reply", "JOINED");
+        messagingTemplate.convertAndSendToUser(username, "/queue/reply", Map.of("status" ,"joined"));
+    }
+
+    @MessageMapping("/queue/leave")
+    public void leaveQueue(Principal principal) {
+        if (principal == null) {
+            System.out.println("ERROR: Principal is null. Is the user authenticated?");
+            return;
+        }
+        String username = principal.getName();
+        queueService.processLeaveRequest();
+        messagingTemplate.convertAndSendToUser(username, "/queue/reply",Map.of("status","left"));
     }
 }

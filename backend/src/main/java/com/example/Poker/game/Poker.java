@@ -28,6 +28,7 @@ public class Poker {
         PLAYER_SHOULD_CHECK,
         INSUFICIENT_BALANCE,
         PLAYER_CANNOT_CHECK,
+        PLAYER_CANNOT_FOLD,
     }
 
     private enum CommunityCards {
@@ -780,14 +781,13 @@ public class Poker {
         return null;
     }
 
-    // TODO: Folding is broken it can skip players 
     public PokerError handleMessage(String playerName,MoveDTO message) {
         PokerPlayer speakingPlayer = players.get(speakingIndex);
         if (!playerName.equals(speakingPlayer.name)) return PokerError.MESSAGE_REQUESTED_BY_NON_SPEAKING;
         if (speakingPlayer.folded()) return PokerError.MESSAGE_REQUESTED_BY_FOLDED;
 
         if (message.action().equals("CALL")) {
-            int maxBet = getMaxBet();        
+            int maxBet = getMaxBet();
             int toBet = maxBet - speakingPlayer.bet; 
             if(toBet == 0) return PokerError.PLAYER_SHOULD_CHECK;
             if(!speakingPlayer.tryBet(toBet)) return PokerError.INSUFICIENT_BALANCE;
@@ -798,8 +798,9 @@ public class Poker {
         } else if (message.action().equals("CHECK")) {
             Integer maxBet = getMaxBet();        
             if(speakingPlayer.bet < maxBet) return PokerError.PLAYER_CANNOT_CHECK;
-        } else if (message.action().equals("FOLD")) { speakingPlayer.fold(); 
-            players.removeIf(p -> p.name.equals(speakingPlayer.name));
+        } else if (message.action().equals("FOLD")) {
+            if(speakingPlayer.folded()) return PokerError.PLAYER_CANNOT_FOLD;
+            speakingPlayer.fold(); 
         } else if (message.action().equals("ALLIN")) {
             int maxBet = getMaxBet();
             speakingPlayer.allIn();

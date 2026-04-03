@@ -40,6 +40,15 @@ public class JwtUtil {
                 .compact();
     }
 
+    public String generateRefreshToken(String username) {
+        return Jwts.builder()
+            .subject(username)
+            .issuedAt(new Date())
+            .expiration(new Date(System.currentTimeMillis() + 1000 * 60 * 60 * 24 * 7))
+            .signWith(getSigningKey())
+            .compact();
+    }
+
     public String extractUsername(String token) {
         return Jwts.parser()
                 .verifyWith(getSigningKey())

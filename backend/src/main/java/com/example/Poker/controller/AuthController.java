@@ -8,6 +8,11 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/auth")
@@ -29,11 +34,24 @@ public class AuthController {
         return ResponseEntity.ok("Server is reachable");
     }
 
+    @PostMapping("/refresh")
+    public ResponseEntity<?> refresh(@RequestBody AuthDto.RefreshRequest request) {
+        String username = jwtUtil.extractUsername(request.refresh());
+        UserDetails userDetails = userService.loadUserByUsername(username);
+
+        if(jwtUtil.isTokenValid(request.refresh(),userDetails)) {
+            String access = jwtUtil.generateToken(username);
+            return ResponseEntity.ok(Map.of("access", access)); 
+        }
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+    }
+
     @PostMapping("/register")
     public ResponseEntity<AuthDto.AuthResponse> register(@RequestBody AuthDto.RegisterRequest request) {
         User user = userService.register(request);
-        String token = jwtUtil.generateToken(user.getUsername());
-        return ResponseEntity.ok(new AuthDto.AuthResponse(token, user.getUsername()));
+        String access = jwtUtil.generateToken(user.getUsername());
+        String refresh = jwtUtil.generateRefreshToken(user.getUsername());
+        return ResponseEntity.ok(new AuthDto.AuthResponse(access,refresh, user.getUsername()));
     }
 
     @PostMapping("/login")
@@ -42,7 +60,10 @@ public class AuthController {
             new UsernamePasswordAuthenticationToken(request.username(), request.password())
         );
         User user = userService.findByUsername(request.username());
-        String token = jwtUtil.generateToken(user.getUsername());
-        return ResponseEntity.ok(new AuthDto.AuthResponse(token, user.getUsername()));
+
+        String access = jwtUtil.generateToken(user.getUsername());
+        String refresh = jwtUtil.generateRefreshToken(user.getUsername());
+
+        return ResponseEntity.ok(new AuthDto.AuthResponse(access, refresh, user.getUsername()));
     }
 }
