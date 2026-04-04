@@ -2,6 +2,11 @@ import { useEffect, useRef, useState } from "react"
 import { Client } from "@stomp/stompjs"
 import { ACCESS_TOKEN } from "../constants"
 
+export interface Message {
+    type : string;
+    payload : object;
+}
+
 const useWebSocket = (onMessage: (message: unknown) => void) => {
     const clientRef = useRef<Client | null>(null)
     const [connected, setConnected] = useState(false)
@@ -14,13 +19,7 @@ const useWebSocket = (onMessage: (message: unknown) => void) => {
             },
             onConnect: () => {
                 setConnected(true)
-                client.subscribe("/topic/game", (message) => {
-                    onMessage(JSON.parse(message.body))
-                })
                 client.subscribe("/user/queue/private", (message) => {
-                    onMessage(JSON.parse(message.body))
-                })
-                client.subscribe("/user/queue/reply", (message) => {
                     onMessage(JSON.parse(message.body))
                 })
             },
@@ -36,6 +35,12 @@ const useWebSocket = (onMessage: (message: unknown) => void) => {
         }
     }, [])
 
+    const subscribe = (destination: string, callback: (message: any) => void) => {
+        return clientRef.current?.subscribe(destination, (message) => {
+            callback(JSON.parse(message.body))
+        })
+    }
+
     const sendMessage = (destination: string, body: object) => {
         clientRef.current?.publish({
             destination,
@@ -43,7 +48,7 @@ const useWebSocket = (onMessage: (message: unknown) => void) => {
         })
     }
 
-    return { sendMessage, connected }
+    return { sendMessage, connected, subscribe }
 }
 
 export default useWebSocket

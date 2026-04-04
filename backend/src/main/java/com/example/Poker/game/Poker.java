@@ -16,7 +16,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.lang.Math;
-
+import java.util.concurrent.CopyOnWriteArrayList;
 
 public class Poker {
     public static final Integer numPlayers = 2;
@@ -63,7 +63,7 @@ public class Poker {
         buttonIndex     = 0;
         raiseIndex      = null;
         cards           = new CardDeck();
-        players         = new ArrayList<>();
+        players         = new CopyOnWriteArrayList<>();
 
         for(String name : playerNames) {
             players.add(new PokerPlayer(baseBalance,name));
@@ -883,6 +883,15 @@ public class Poker {
         return PokerError.SUCCESS; 
     }
 
+    // doesn't check for existence
+    public void removePlayer(String username) {      
+        players.removeIf(p -> p.name.equals(username));
+
+        for(PokerPlayer player : players) {
+            player.print();
+        }
+    }
+
     public PokerDTO toDto() {
         List<PokerPlayerDTO> playersDto = new ArrayList<>();
 
@@ -902,7 +911,7 @@ public class Poker {
 
     public boolean playerIsPlaying(String username) {
         for(PokerPlayer player : players) {
-            if(username == player.name) return true;
+            if(username.equals(player.name)) return true;
         }
         return false;
     }

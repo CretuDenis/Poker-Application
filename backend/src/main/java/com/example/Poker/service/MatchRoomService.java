@@ -11,6 +11,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.Map;
 
 @Service
 public class MatchRoomService {
@@ -23,19 +24,33 @@ public class MatchRoomService {
         this.activeGames = new ConcurrentHashMap<>();
         this.gameId = 0L;
     }
-    
-    public void createGame(List<String> playerUsernames) {
-        Poker pokerGame = new Poker(playerUsernames);
-        pokerGame.print();
-        activeGames.putIfAbsent(gameId,pokerGame);
-        messagingTemplate.convertAndSend("/topic/game/" + gameId, pokerGame.toDto());
 
+    public PokerDTO getState(Long gameId) {
+        Poker game = activeGames.get(gameId);
+        if(game != null) return game.toDto();
+        return null;
+    }
+
+    public PokerDTO handleDisconnect(Long gameId, String username) {
+        Poker game = activeGames.get(gameId);
+        if(game == null) return null;
+        game.removePlayer(username);
+        return game.toDto();
+    }
+    
+    public Long createGame(List<String> playerUsernames) {
+        Poker pokerGame = new Poker(playerUsernames);
+        activeGames.putIfAbsent(gameId,pokerGame);
+        Long currGameId = gameId;
         gameId++;
+        pokerGame.print();
 
         for(String username : playerUsernames) {
-            System.out.println("Seinding hand to player: " + username);
-            messagingTemplate.convertAndSendToUser(username,"/queue/game", pokerGame.getPlayerHand(username));
+            messagingTemplate.convertAndSendToUser(username,"/queue/private", Map.of("game",currGameId));
         }
+        System.out.println("Created game " + currGameId);
+
+        return currGameId;
     }
 
     public PokerDTO processMove(Long gameId,String username, MoveDTO move) {
@@ -46,7 +61,9 @@ public class MatchRoomService {
 
         if(!playerIsPlaying) return null;
 
-        if(selectedGame.handleMessage(username,move) != Poker.PokerError.SUCCESS) return null; 
+        Poker.PokerError err = selectedGame.handleMessage(username,move); 
+        System.out.println(err.name());
+        if(err != Poker.PokerError.SUCCESS) return null; 
         return selectedGame.toDto();
     }
 }

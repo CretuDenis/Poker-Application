@@ -13,10 +13,11 @@ function Home() {
     });
     const navigate = useNavigate();
 
-
-    const {sendMessage,connected} = useWebSocket((message : unknown) => {
-        console.log(message);
-        console.log("Message recieved");
+    const {sendMessage,connected, subscribe } = useWebSocket((message : any) => {
+        if ("game" in message) {
+            const gameId = message.game;
+            navigate(`/game/${gameId}`)
+        }
     });
     
     const handleLogout = () => {
@@ -24,7 +25,6 @@ function Home() {
         localStorage.removeItem(REFRESH_TOKEN);
         navigate("/login");
     }
-
 
     const handleSearchForGame = () => { 
         setSearching(!searching);

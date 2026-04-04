@@ -3,6 +3,7 @@ import {BrowserRouter,Routes,Route} from "react-router-dom"
 import './App.css'
 import ProtectedRoute from './components/ProtectedRoute.tsx'
 import Home from "./pages/Home"
+import GameRoom from "./pages/GameRoom"
 import Form from "./components/Form"
 
 function NotFound() {
@@ -33,15 +34,18 @@ function App() {
         <BrowserRouter>
             <Routes>
                 <Route path="/"
-                        element={
-                            <ProtectedRoute>
-                                <Home /> 
-                            </ProtectedRoute>
-                        }
-                    />
+                    element={
+                        <ProtectedRoute>
+                            <Home /> 
+                        </ProtectedRoute>
+                    } />
+                <Route path="/game/:gameId" element={
+                    <ProtectedRoute>
+                        <GameRoom />
+                    </ProtectedRoute>
+                    } />
                 <Route path="/login" element={<Login />} />
                 <Route path="/register" element={<Register />} />
-                <Route path="*" element={<NotFound /> } />
             </Routes>
         </BrowserRouter>
     );
