@@ -1,8 +1,9 @@
 import { useNavigate} from 'react-router-dom';
 import { useState, useEffect } from 'react';
-import { jwtDecode } from "jwt-decode"
 import useWebSocket from "../hooks/useWebSocket"
 import { ACCESS_TOKEN,REFRESH_TOKEN } from '../constants';
+import { jwtDecode } from "jwt-decode"
+import { QueueMessage,Message } from "../types"
 
 function Home() {
     const [searching,setSearching] = useState<boolean>(false);    
@@ -17,6 +18,8 @@ function Home() {
         if ("game" in message) {
             const gameId = message.game;
             navigate(`/game/${gameId}`)
+        } else {
+            console.log(message);
         }
     });
     
@@ -29,9 +32,9 @@ function Home() {
     const handleSearchForGame = () => { 
         setSearching(!searching);
         if(searching) {
-            sendMessage("/app/queue/leave",{"":""});
+            sendMessage<QueueMessage>("/app/queue",new Message<QueueMessage>(new QueueMessage("leave"),QueueMessage));
         } else {
-            sendMessage("/app/queue/join",{"":""});
+            sendMessage<QueueMessage>("/app/queue",new Message<QueueMessage>(new QueueMessage("join"),QueueMessage));
         }
     }
 

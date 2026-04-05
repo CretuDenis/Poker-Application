@@ -3,6 +3,7 @@ package com.example.Poker.controller;
 import com.example.Poker.service.MatchRoomService;
 import com.example.Poker.dto.MoveDTO;
 import com.example.Poker.dto.PokerDTO;
+import com.example.Poker.dto.Message;
 
 import org.springframework.messaging.handler.annotation.DestinationVariable;
 import org.springframework.messaging.handler.annotation.MessageMapping;
@@ -24,6 +25,8 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.PathVariable;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.security.Principal;
 import java.util.ArrayList;
@@ -31,20 +34,52 @@ import java.util.List;
 
 @Controller
 public class MatchRoomController {
-    @Autowired private MatchRoomService matchRoomService;
-    @Autowired private SimpMessagingTemplate messagingTemplate;
+    private final MatchRoomService matchRoomService;
+    private final SimpMessagingTemplate messagingTemplate;
+    private final ObjectMapper objectMapper;
 
-    public MatchRoomController(MatchRoomService matchRoomService,SimpMessagingTemplate messagingTemplate) {
+    public MatchRoomController(MatchRoomService matchRoomService,SimpMessagingTemplate messagingTemplate,ObjectMapper objectMapper) {
         this.matchRoomService = matchRoomService; 
         this.messagingTemplate = messagingTemplate;
+        this.objectMapper = objectMapper;
     }
 
-    @GetMapping("/game/{gameId}")
-    @ResponseBody
-    public PokerDTO getState(@PathVariable Long gameId,Principal principal) {
-        PokerDTO dto = matchRoomService.getState(gameId); 
-        if(dto == null) System.out.println("Poker was null");
-        return dto;
+    @MessageMapping("/game/{gameId}")
+    public void handleMessage(@DestinationVariable Long gameId,Principal principal,@Payload String rawMessage) throws Exception {
+        if(principal == null) {
+            System.out.println("Game room cannot handle unauthentificated users");
+            return;
+        }
+        String username = principal.getName();
+        JsonNode node = objectMapper.readTree(rawMessage);
+        String type = node.get("type").asText();
+        switch(type) {
+            case "DisconnectRequest" -> {
+                Message<PokerDTO> msg = new Message<>(matchRoomService.handleDisconnect(gameId,username));
+                messagingTemplate.convertAndSend("/topic/game/" + gameId, msg);
+                break;
+            }
+            case "MoveDTO" -> {
+                MoveDTO content = objectMapper.treeToValue(node.get("content"), MoveDTO.class);
+                Message<PokerDTO> msg = new Message<>(matchRoomService.processMove(gameId,username,content));
+                messagingTemplate.convertAndSend("/topic/game/" + gameId, msg);
+                break;
+            }
+            case "StateQuery" -> {
+                PokerDTO state = matchRoomService.getState(gameId);
+                if(state == null) {
+                    System.out.println("STATE IS NULL WHY THE FUCK IS IT NULL");
+                    return;
+                }
+                Message<PokerDTO> msg = new Message<>(state);
+                messagingTemplate.convertAndSendToUser(username,"/queue/private",msg);
+                break;
+            }  
+            default -> {
+                System.out.println("Unexpected message passed to the game room of type: " + type);
+                break;
+            }
+        }
     }
 
     @MessageMapping("/game/{gameId}/disconnect")

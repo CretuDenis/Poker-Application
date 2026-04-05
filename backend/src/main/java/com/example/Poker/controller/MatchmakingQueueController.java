@@ -2,6 +2,8 @@ package com.example.Poker.controller;
 
 import com.example.Poker.service.MatchRoomService;
 import com.example.Poker.service.MatchmakingQueueService;
+import com.example.Poker.dto.Message;
+import com.example.Poker.dto.QueueMessage;
 
 import org.springframework.messaging.handler.annotation.DestinationVariable;
 import org.springframework.messaging.handler.annotation.MessageMapping;
@@ -15,7 +17,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
-
 @Controller
 public class MatchmakingQueueController {
     @Autowired private SimpMessagingTemplate messagingTemplate;
@@ -28,26 +29,22 @@ public class MatchmakingQueueController {
         this.matchRoomService = matchRoomService; 
     }
 
-    @MessageMapping("/queue/join")
-    public void joinQueue(Principal principal) {
+    @MessageMapping("/queue")
+    public void processQueueMessage(Principal principal,Message<QueueMessage> message) {
         if (principal == null) {
-            System.out.println("ERROR: Principal is null. Is the user authenticated?");
+            System.out.println("Unauthentificated users cannot interact with the matchmaking queue");
             return;
         }
 
         String username = principal.getName();
-        queueService.processJoinRequest(username);
-        messagingTemplate.convertAndSendToUser(username, "/queue/reply", Map.of("status" ,"joined"));
-    }
-
-    @MessageMapping("/queue/leave")
-    public void leaveQueue(Principal principal) {
-        if (principal == null) {
-            System.out.println("ERROR: Principal is null. Is the user authenticated?");
-            return;
+        if (message.content().info().equals("join")) {
+            queueService.processJoinRequest(username);
+            messagingTemplate.convertAndSendToUser(username, "/queue/private",new Message<QueueMessage>(new QueueMessage("joined")));
+        } else if (message.content().info().equals("leave")) {
+            queueService.processLeaveRequest();
+            messagingTemplate.convertAndSendToUser(username, "/queue/private",new Message<QueueMessage>(new QueueMessage("left")));
+        } else {
+            System.out.println("Invalid message recieved in the matchmaking queue");
         }
-        String username = principal.getName();
-        queueService.processLeaveRequest();
-        messagingTemplate.convertAndSendToUser(username, "/queue/reply",Map.of("status","left"));
     }
 }

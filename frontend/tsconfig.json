@@ -1,7 +1,11 @@
 {
+  "compilerOptions": {
+    "types": ["@webgpu/types"]
+  },
   "files": [],
   "references": [
     { "path": "./tsconfig.app.json" },
     { "path": "./tsconfig.node.json" }
-  ]
+  ],
+  "include" : ["src"]
 }
