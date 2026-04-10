@@ -25,6 +25,12 @@ public class MatchRoomService {
         this.gameId = 0L;
     }
 
+    public HandDTO getPlayerHand(Long gameId, String username) {
+        Poker game = activeGames.get(gameId);
+        if(game == null) return null;
+        return game.getPlayerHand(username);
+    }
+
     public PokerDTO getState(Long gameId) {
         Poker game = activeGames.get(gameId);
         if(game != null) return game.toDto();

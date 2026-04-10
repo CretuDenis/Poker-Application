@@ -3,6 +3,7 @@ package com.example.Poker.controller;
 import com.example.Poker.service.MatchRoomService;
 import com.example.Poker.dto.MoveDTO;
 import com.example.Poker.dto.PokerDTO;
+import com.example.Poker.dto.HandDTO;
 import com.example.Poker.dto.Message;
 
 import org.springframework.messaging.handler.annotation.DestinationVariable;
@@ -65,16 +66,24 @@ public class MatchRoomController {
                 messagingTemplate.convertAndSend("/topic/game/" + gameId, msg);
                 break;
             }
+            case "HandQuery" -> {
+                HandDTO hand = matchRoomService.getPlayerHand(gameId,username);
+                Message<HandDTO> msg = new Message<>(hand);
+                messagingTemplate.convertAndSendToUser(username,"/queue/private",msg);
+                break;
+            }
             case "StateQuery" -> {
                 PokerDTO state = matchRoomService.getState(gameId);
+                HandDTO hand = matchRoomService.getPlayerHand(gameId, username);
                 if(state == null) {
                     System.out.println("STATE IS NULL WHY THE FUCK IS IT NULL");
                     return;
                 }
+
                 Message<PokerDTO> msg = new Message<>(state);
                 messagingTemplate.convertAndSendToUser(username,"/queue/private",msg);
                 break;
-            }  
+            }
             default -> {
                 System.out.println("Unexpected message passed to the game room of type: " + type);
                 break;

@@ -19,7 +19,7 @@ import java.lang.Math;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 public class Poker {
-    public static final Integer numPlayers = 2;
+    public static final Integer numPlayers = 3;
     
     public enum PokerError {
         SUCCESS,
@@ -778,7 +778,7 @@ public class Poker {
                 return new HandDTO(player.first.toDto(),player.second.toDto());
             }
         }
-        return null;
+        return new HandDTO(null,null);
     }
 
     public PokerError handleMessage(String playerName,MoveDTO message) {

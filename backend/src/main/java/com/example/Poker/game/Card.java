@@ -45,7 +45,7 @@ public record Card(Symbol symbol,Suit suit) {
     }
 
     public CardDTO toDto() {
-        return new CardDTO(symbol.name(),suit.name());
+        return new CardDTO(symbol.getDisplay(),suit.name());
     }
 
     public void print() {
