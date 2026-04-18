@@ -5,4 +5,4 @@ import com.example.Poker.dto.CardDTO;
 
 import java.util.List;
 
-public record PokerDTO(List<PokerPlayerDTO> players,CardDTO[] communityCards,String button,String speaking) {}
+public record PokerDTO(List<PokerPlayerDTO> players,CardDTO[] communityCards,String button,String speaking,Integer round) {}

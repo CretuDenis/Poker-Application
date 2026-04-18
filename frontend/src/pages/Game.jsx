@@ -40,11 +40,12 @@ class Card {
 }
 
 class GameState {
-    constructor(players = [], communityCards = [null,null,null,null,null], button = "", speaking = "") {
+    constructor(players = [], communityCards = [null,null,null,null,null], button = "", speaking = "", roundCount = 0) {
         this.players = players;
         this.communityCards = communityCards;
         this.button = button;
         this.speaking = speaking;
+        this.roundCount = roundCount;
     }
 }
 
@@ -67,8 +68,10 @@ function Game() {
     const assetMapRef = useRef(new Map());
     const assetsLoaded = useRef(false);
 
+    const gameStateRef = useRef(new GameState());
+    const prevGameStateRef = useRef(new GameState());
+
     const { gameId } = useParams();
-    const [ gameState, setGameState ] = useState(new GameState());
     const [ clientHand, setHand] = useState(new Hand());
     const [ raiseAmount, setRaiseAmount] = useState(0);
     const [username, setUsername] = useState(() => {
@@ -92,7 +95,8 @@ function Game() {
     const {sendMessage,connected, subscribe } = useWebSockets((message) => {
         switch(message.type) {
             case "PokerDTO": {
-                setGameState(message.content);
+                prevGameStateRef.current = gameStateRef.current;
+                gameStateRef.current = message.content;
                 break;
             }
             case "HandDTO": {
@@ -109,7 +113,8 @@ function Game() {
         const sub = subscribe(`/topic/game/${gameId}`, (message) => {
             switch (message.type) {
                 case "PokerDTO": {
-                    setGameState(message.content);
+                    prevGameStateRef.current = gameStateRef.current;
+                    gameStateRef.current = message.content;
                     break;
                 }
             }
@@ -129,7 +134,7 @@ function Game() {
     const handleAction = (action) => {
         return () => {
             const clientName = usernameFromToken();
-            const currentSpeaking = gameState.speaking;
+            const currentSpeaking = gameStateRef.current.speaking;
             const assetMap = assetMapRef.current;
             if (currentSpeaking === clientName && ("CALL" || action === "RAISE" || action === "ALLIN")) {
                 const soundIndex = Math.floor(Math.random() * 2 + 1);
@@ -161,7 +166,7 @@ function Game() {
 
     return (
         <div>
-            <Canvas currGameState={gameState} clientHand={clientHand} />
+            <Canvas currGameState={gameStateRef.current} prevGameState={prevGameStateRef.current} clientHand={clientHand} />
                 <div style={{ position: 'relative', zIndex: 1 }}> 
                     <h1>Game {gameId}</h1> 
                     <h1>Hello {username}</h1> 
@@ -171,7 +176,7 @@ function Game() {
                     <input 
                         type="range" 
                         min="1" 
-                        max={getClientBalance(gameState)} 
+                        max={getClientBalance(gameStateRef.current)} 
                         value={raiseAmount}
                         onChange={(e) => setRaiseAmount(Number(e.target.value))} 
                     />
@@ -179,7 +184,7 @@ function Game() {
                     <button onClick = {handleAction("ALLIN")}>All in</button>
                     <button onClick = {handleAction("FOLD")}>Fold</button>
                     <button onClick = {handleDisconnect}>Disconnect</button>
-                    <pre>{JSON.stringify(gameState, null, 3)}</pre>
+                    <pre>{JSON.stringify(gameStateRef.current, null, 3)}</pre>
                     <pre>{JSON.stringify(clientHand, null, 3)}</pre>
                 </div>
         </div>

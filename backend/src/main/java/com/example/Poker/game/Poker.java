@@ -906,7 +906,7 @@ public class Poker {
             }
         }
         
-        return new PokerDTO(playersDto,communityCardsDtos,players.get(buttonIndex).name,players.get(speakingIndex).name);
+        return new PokerDTO(playersDto,communityCardsDtos,players.get(buttonIndex).name,players.get(speakingIndex).name,roundCount);
     }
 
     public boolean playerIsPlaying(String username) {
