@@ -11,17 +11,20 @@ import org.springframework.stereotype.Service;
 
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.Map;
 
 @Service
 public class MatchRoomService {
     @Autowired private SimpMessagingTemplate messagingTemplate;
     private final ConcurrentHashMap<Long,Poker> activeGames;
+    private final ConcurrentHashMap<Long,Poker> prevGameState;
     private Long gameId; 
 
     public MatchRoomService(SimpMessagingTemplate messagingTemplate) {
         this.messagingTemplate = messagingTemplate;
         this.activeGames = new ConcurrentHashMap<>();
+        this.prevGameState = new ConcurrentHashMap<>();
         this.gameId = 0L;
     }
 
@@ -31,17 +34,17 @@ public class MatchRoomService {
         return game.getPlayerHand(username);
     }
 
-    public PokerDTO getState(Long gameId) {
-        Poker game = activeGames.get(gameId);
-        if(game != null) return game.toDto();
-        return null;
+    public Poker getState(Long gameId) {
+        return activeGames.get(gameId);
     }
 
-    public PokerDTO handleDisconnect(Long gameId, String username) {
+    public Poker handleDisconnect(Long gameId, String username) {
         Poker game = activeGames.get(gameId);
         if(game == null) return null;
+        Poker prev = new Poker(game);
+        prevGameState.put(gameId, prev);
         game.removePlayer(username);
-        return game.toDto();
+        return game;
     }
     
     public Long createGame(List<String> playerUsernames) {
@@ -49,27 +52,29 @@ public class MatchRoomService {
         activeGames.putIfAbsent(gameId,pokerGame);
         Long currGameId = gameId;
         gameId++;
-        pokerGame.print();
 
         for(String username : playerUsernames) {
             messagingTemplate.convertAndSendToUser(username,"/queue/private", Map.of("game",currGameId));
         }
-        System.out.println("Created game " + currGameId);
-
         return currGameId;
     }
 
-    public PokerDTO processMove(Long gameId,String username, MoveDTO move) {
+    public Poker getPrevState(Long gameId) {
+        return prevGameState.get(gameId);
+    }
+
+    public Poker processMove(Long gameId,String username, MoveDTO move) {
         Poker selectedGame = activeGames.get(gameId);
         if(selectedGame == null) return null;
 
         boolean playerIsPlaying = selectedGame.playerIsPlaying(username);
-
+        Poker prevState = new Poker(selectedGame);
+ 
         if(!playerIsPlaying) return null;
 
         Poker.PokerError err = selectedGame.handleMessage(username,move); 
-        System.out.println(err.name());
         if(err != Poker.PokerError.SUCCESS) return null; 
-        return selectedGame.toDto();
+        prevGameState.put(gameId, prevState);
+        return selectedGame;
     }
 }

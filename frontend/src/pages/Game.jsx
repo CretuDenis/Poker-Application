@@ -1,8 +1,6 @@
 import { useNavigate, useParams } from 'react-router-dom';
 import { useState, useEffect,useRef } from 'react';
 import { useWebSockets } from "../hooks/useWebSockets"
-import { ACCESS_TOKEN } from '../constants';
-import { jwtDecode } from "jwt-decode"
 import { usernameFromToken } from '../api'
 import Canvas from "../components/Canvas.jsx"
 
@@ -24,31 +22,6 @@ const audioNames = [
     'dieThrow2',
 ]
 
-class Player {
-    constructor(name,balance,bet) {
-        this.name = name;
-        this.balance = balance;
-        this.bet = bet;
-    }
-}
-
-class Card {
-    constructor(symbol,suti) {
-        this.symbol = symbol;
-        this.suit = suit;
-    }
-}
-
-class GameState {
-    constructor(players = [], communityCards = [null,null,null,null,null], button = "", speaking = "", roundCount = 0) {
-        this.players = players;
-        this.communityCards = communityCards;
-        this.button = button;
-        this.speaking = speaking;
-        this.roundCount = roundCount;
-    }
-}
-
 class Hand {
     constructor(first = null,second = null) {
         this.first = first;
@@ -57,6 +30,7 @@ class Hand {
 }
 
 const getClientBalance = (gameState) => {
+    if (gameState === null) return null;
     const clientName = usernameFromToken();
     for(const player of gameState.players) {
         if(player.name === clientName) return player.balance;
@@ -68,17 +42,11 @@ function Game() {
     const assetMapRef = useRef(new Map());
     const assetsLoaded = useRef(false);
 
-    const gameStateRef = useRef(new GameState());
-    const prevGameStateRef = useRef(new GameState());
+    const [ gameState, setGameState ] = useState(null);
+    const [ prevGameState, setPrevGameState ] = useState(null);
 
     const { gameId } = useParams();
-    const [ clientHand, setHand] = useState(new Hand());
     const [ raiseAmount, setRaiseAmount] = useState(0);
-    const [username, setUsername] = useState(() => {
-        const access = localStorage.getItem(ACCESS_TOKEN);
-        if (!access) return "Guest";
-        return jwtDecode(access).sub ?? "Guest";
-    });
 
     const navigate = useNavigate();
 
@@ -88,41 +56,27 @@ function Game() {
             const audio = new Audio(`/${audioDirectory}/${audioName}.ogg`);
             assetMap.set(audioName, audio); 
         }
-
         assetsLoaded.current = true;
     },[]);
 
-    const {sendMessage,connected, subscribe } = useWebSockets((message) => {
+
+    const {sendMessage, connected, subscribe } = useWebSockets((message) => {
         switch(message.type) {
-            case "PokerDTO": {
-                prevGameStateRef.current = gameStateRef.current;
-                gameStateRef.current = message.content;
+            case "GameStateDTO": {
+                setGameState(message.content.current);
+                setPrevGameState(message.content.previous);
                 break;
             }
-            case "HandDTO": {
-                setHand(message.content);
-                console.log(message.content);
+            case "PokerDTO": {
+                setGameState(message.content);
                 break;
-            } 
+            }
         }
     });
 
     useEffect(() => {
         if (!connected) return;
-
-        const sub = subscribe(`/topic/game/${gameId}`, (message) => {
-            switch (message.type) {
-                case "PokerDTO": {
-                    prevGameStateRef.current = gameStateRef.current;
-                    gameStateRef.current = message.content;
-                    break;
-                }
-            }
-        });
-
         sendMessage(`/app/game/${gameId}`,{ type: "StateQuery", content: null });
-        sendMessage(`/app/game/${gameId}`,{ type: "HandQuery", content: null });
-
         return () => sub.unsubscribe();
     }, [connected]);
 
@@ -131,28 +85,37 @@ function Game() {
         navigate("/");
     }
 
+    const clientHand = () => {
+        const clientName = usernameFromToken();
+        if (gameState === null) {
+            console.log("Cannot get user hand if gameState is null");
+            return null;
+        }
+        for(const player of gameState.players) {
+            if (player.name === clientName) return player.hand;
+        }
+        console.log("Client not found to retrieve the hand");
+        return null;
+    }
+
     const handleAction = (action) => {
         return () => {
             const clientName = usernameFromToken();
-            const currentSpeaking = gameStateRef.current.speaking;
+            const currentSpeaking = gameState.speaking;
+            if (clientName !== currentSpeaking) return;
+
             const assetMap = assetMapRef.current;
             if (currentSpeaking === clientName && ("CALL" || action === "RAISE" || action === "ALLIN")) {
-                const soundIndex = Math.floor(Math.random() * 2 + 1);
-                const sound1 = assetMap.get(`chipsCollide1`);
-                const sound2 = assetMap.get(`chipsCollide2`);
-                const sound3 = assetMap.get(`chipsCollide3`);
-
-                sound1.currentTime = 0;
-                sound2.currentTime = 0;
-                sound3.currentTime = 0;
-
-                sound1.play();
-                sound2.play();
-                sound3.play();
-            } else if (currentSpeaking === clientName && action === 'FOLD') {
-
+                const randomIndex = Math.floor(Math.random() * 2 + 1);
+                const sound = assetMap.get(`chipsCollide${randomIndex}`);
+                sound.currentTime = 0;
+                sound.play();
+            } else if (currentSpeaking === clientName && action === 'FOLD' && clientHand().first !== null) {
+                const randomIndex = Math.floor(Math.random() * 2 + 1);
+                const sound = assetMap.get(`cardSlide${randomIndex}`);
+                sound.currentTime = 0;
                 setHand(new Hand()); 
-            }  
+            }
             const message = {
                 type : "MoveDTO",
                 content : {
@@ -164,19 +127,34 @@ function Game() {
         }
     }
 
+    const shouldAskForReveal = () => {
+        if (gameState === null) return false;
+        const players = gameState.players;
+        let numActive = 0;
+        for(const player of players) {
+            if (player.hand !== null) numActive++;
+            if (numActive > 1) return false; 
+        }
+        const clientName = usernameFromToken();
+        for(const player of players) {
+            if (player.hand !== null && player.name !== clientName) return false;
+        }
+        return true;
+    }
+
     return (
         <div>
-            <Canvas currGameState={gameStateRef.current} prevGameState={prevGameStateRef.current} clientHand={clientHand} />
+            <Canvas currGameState={gameState} prevGameState={prevGameState} clientHand={clientHand()} />
                 <div style={{ position: 'relative', zIndex: 1 }}> 
                     <h1>Game {gameId}</h1> 
-                    <h1>Hello {username}</h1> 
+                    <h1>Hello {usernameFromToken()}</h1> 
                     <button onClick = {handleAction("CHECK")}>Check</button>
                     <button onClick = {handleAction("CALL")}>Call</button>
                     <button onClick = {handleAction("RAISE")}>Raise</button>
                     <input 
                         type="range" 
                         min="1" 
-                        max={getClientBalance(gameStateRef.current)} 
+                        max={getClientBalance(gameState)} 
                         value={raiseAmount}
                         onChange={(e) => setRaiseAmount(Number(e.target.value))} 
                     />
@@ -184,11 +162,20 @@ function Game() {
                     <button onClick = {handleAction("ALLIN")}>All in</button>
                     <button onClick = {handleAction("FOLD")}>Fold</button>
                     <button onClick = {handleDisconnect}>Disconnect</button>
-                    <pre>{JSON.stringify(gameStateRef.current, null, 3)}</pre>
-                    <pre>{JSON.stringify(clientHand, null, 3)}</pre>
+                    {
+                        shouldAskForReveal() ? 
+                            <div>
+                                <h1>Reveal?</h1> 
+                                <button onClick = {handleAction("REVEAL")}>Yes</button>
+                                <button onClick = {handleAction("DONT_REVEAL")}>No</button>
+                            </div>
+                        : <></>
+                    }
+                    <pre>{JSON.stringify(gameState, null, 3)}</pre>
                 </div>
         </div>
     );
 }
+
 
 export default Game; 

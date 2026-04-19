@@ -1,6 +1,7 @@
 package com.example.Poker.game;
 import com.example.Poker.game.Card;
 import com.example.Poker.dto.PokerPlayerDTO;
+import com.example.Poker.dto.HandDTO;
 
 public class PokerPlayer {
     public Integer balance;
@@ -13,6 +14,18 @@ public class PokerPlayer {
         this.balance = balance;
         this.bet = 0;
         this.name = name;
+    }
+
+    public PokerPlayer(PokerPlayer other) {
+        if (other == null) {
+            throw new IllegalArgumentException("Cannot copy a null player");
+        }
+        this.name = other.name;
+        this.balance = other.balance;
+        this.bet = other.bet;
+
+        this.first = other.first;
+        this.second = other.second;
     }
 
     public boolean tryBet(Integer amount) {
@@ -35,8 +48,12 @@ public class PokerPlayer {
         second = null;
     }
 
+    public PokerPlayerDTO toDto(String observer) {
+        return new PokerPlayerDTO(name,balance,bet, folded() ? null : new HandDTO(observer == this.name ? first.toDto() : null,observer == this.name ? second.toDto() : null));
+    }
+
     public PokerPlayerDTO toDto() {
-        return new PokerPlayerDTO(name,balance,bet);
+        return new PokerPlayerDTO(name,balance,bet, folded() ? null : new HandDTO(first.toDto(),second.toDto()));
     }
 
     public void print() {

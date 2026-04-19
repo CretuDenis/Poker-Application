@@ -8,7 +8,6 @@ import java.util.Random;
 
 public class CardDeck {
     private Random random;
-
     private List<Card> deck;
     private final Integer numSwaps = 100;
 
@@ -22,20 +21,17 @@ public class CardDeck {
         }
     }
 
+    public CardDeck(CardDeck other) {
+        this.random = new Random();
+        this.deck = new ArrayList<>(other.deck);
+    }
+
     public Integer size() {
         return deck.size();
     }
 
     public void shuffle() {
-        for(int i = 0; i < numSwaps; i++) {
-            int first = random.nextInt(deck.size());
-            int second = random.nextInt(deck.size());
-            while(first == second) {
-                second = random.nextInt(deck.size());
-            }
-
-            Collections.swap(deck,first,second);
-        }
+        Collections.shuffle(deck, random);
     }
 
     public Card dealCard() {

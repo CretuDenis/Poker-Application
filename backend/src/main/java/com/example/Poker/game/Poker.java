@@ -29,6 +29,7 @@ public class Poker {
         INSUFICIENT_BALANCE,
         PLAYER_CANNOT_CHECK,
         PLAYER_CANNOT_FOLD,
+        YOU_ARE_NOT_THE_REMAINING_PLAYER
     }
 
     private enum CommunityCards {
@@ -73,6 +74,29 @@ public class Poker {
 
     }
 
+    public Poker(Poker other) {
+        if (other == null) {
+            throw new IllegalArgumentException("Source game cannot be null");
+        }
+
+        this.roundCount = other.roundCount;
+        this.smallBlind = other.smallBlind;
+        this.buttonIndex = other.buttonIndex;
+        this.speakingIndex = other.speakingIndex;
+        this.raiseIndex = other.raiseIndex;
+        this.bettingRound = other.bettingRound;
+
+        this.cards = new CardDeck(other.cards);
+
+        this.players = new CopyOnWriteArrayList<>();
+        for (PokerPlayer p : other.players) {
+            this.players.add(new PokerPlayer(p));
+        }
+
+        this.communityCards = new Card[5];
+        System.arraycopy(other.communityCards, 0, this.communityCards, 0, 5);
+    }
+
     private int getMaxBet() {
         int maxBet = 0;
         for(PokerPlayer player : players) {
@@ -109,6 +133,7 @@ public class Poker {
     }
 
     private void roundSetup() {
+        cards = new CardDeck();
         raiseIndex = null;
         clearCommunityCards();
         ++roundCount;
@@ -799,7 +824,7 @@ public class Poker {
             Integer maxBet = getMaxBet();        
             if(speakingPlayer.bet < maxBet) return PokerError.PLAYER_CANNOT_CHECK;
         } else if (message.action().equals("FOLD")) {
-            if(speakingPlayer.folded()) return PokerError.PLAYER_CANNOT_FOLD;
+            if(speakingPlayer.folded() || getActivePlayers() == 1) return PokerError.PLAYER_CANNOT_FOLD;
             speakingPlayer.fold(); 
         } else if (message.action().equals("ALLIN")) {
             int maxBet = getMaxBet();
@@ -807,6 +832,15 @@ public class Poker {
             if (speakingPlayer.bet > maxBet) {
                 raiseIndex = speakingIndex;
             }
+        } else if (message.action().equals("REVEAL") || message.action().equals("DONT_REVEAL")) {
+            PokerPlayer remainingPlayer = players.stream()
+                .filter(p -> !p.folded())
+                .findFirst()
+                .orElse(null);
+            if (playerName.equals(remainingPlayer.name)) return PokerError.YOU_ARE_NOT_THE_REMAINING_PLAYER;
+
+            roundSetup();
+            return PokerError.SUCCESS;
         }
 
         if (getActivePlayers() == 1) {
@@ -818,8 +852,7 @@ public class Poker {
             assert remainingPlayer != null : "Cannot find the remaining player even though it's impossible for him to be";
 
             remainingPlayer.claim(pot);
-
-            roundSetup();
+            speakingIndex = nextPlaying(speakingIndex);
             return PokerError.SUCCESS;
         }
 
@@ -892,6 +925,23 @@ public class Poker {
         }
     }
 
+    public PokerDTO toDto(String observer) {
+        List<PokerPlayerDTO> playersDto = new ArrayList<>();
+
+        for(PokerPlayer player : players) {
+            playersDto.add(player.toDto(observer));
+        }
+
+        CardDTO[] communityCardsDtos = new CardDTO[5];
+        for(int i = 0; i < 5; i++) {
+            if (communityCards[i] != null) {
+                communityCardsDtos[i] = communityCards[i].toDto();
+            }
+        }
+        
+        return new PokerDTO(playersDto,communityCardsDtos,players.get(buttonIndex).name,players.get(speakingIndex).name,roundCount);
+    }
+
     public PokerDTO toDto() {
         List<PokerPlayerDTO> playersDto = new ArrayList<>();
 
@@ -907,6 +957,12 @@ public class Poker {
         }
         
         return new PokerDTO(playersDto,communityCardsDtos,players.get(buttonIndex).name,players.get(speakingIndex).name,roundCount);
+    }
+
+    public List<String> getPlayerNames() {
+        return players.stream()
+          .map(player -> player.name)
+          .toList();
     }
 
     public boolean playerIsPlaying(String username) {

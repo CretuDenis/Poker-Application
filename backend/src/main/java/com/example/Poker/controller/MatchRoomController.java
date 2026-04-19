@@ -3,6 +3,8 @@ package com.example.Poker.controller;
 import com.example.Poker.service.MatchRoomService;
 import com.example.Poker.dto.MoveDTO;
 import com.example.Poker.dto.PokerDTO;
+import com.example.Poker.game.Poker;
+import com.example.Poker.dto.GameStateDTO;
 import com.example.Poker.dto.HandDTO;
 import com.example.Poker.dto.Message;
 
@@ -56,32 +58,50 @@ public class MatchRoomController {
         String type = node.get("type").asText();
         switch(type) {
             case "DisconnectRequest" -> {
-                Message<PokerDTO> msg = new Message<>(matchRoomService.handleDisconnect(gameId,username));
-                messagingTemplate.convertAndSend("/topic/game/" + gameId, msg);
+                Poker prevState = matchRoomService.getState(gameId);
+                Poker currState = matchRoomService.handleDisconnect(gameId,username);
+
+                if (currState == null) return;
+                List<String> playerNames = currState.getPlayerNames();
+
+                for(String name : playerNames) {
+                    Message<GameStateDTO> msg = new Message<>(
+                            new GameStateDTO(
+                                prevState == null ? null : prevState.toDto(name),
+                                currState.toDto(name)));
+                    messagingTemplate.convertAndSendToUser(name,"/queue/private",msg);
+                }
                 break;
             }
             case "MoveDTO" -> {
-                MoveDTO content = objectMapper.treeToValue(node.get("content"), MoveDTO.class);
-                Message<PokerDTO> msg = new Message<>(matchRoomService.processMove(gameId,username,content));
-                messagingTemplate.convertAndSend("/topic/game/" + gameId, msg);
-                break;
-            }
-            case "HandQuery" -> {
-                HandDTO hand = matchRoomService.getPlayerHand(gameId,username);
-                Message<HandDTO> msg = new Message<>(hand);
-                messagingTemplate.convertAndSendToUser(username,"/queue/private",msg);
+                MoveDTO move = objectMapper.treeToValue(node.get("content"), MoveDTO.class);
+                Poker prevState = matchRoomService.getState(gameId);
+                Poker currState = matchRoomService.processMove(gameId,username,move);
+
+                if (currState == null) return;
+
+                List<String> playerNames = currState.getPlayerNames();
+
+                for(String name : playerNames) {
+                    Message<GameStateDTO> msg = new Message<>(
+                            new GameStateDTO(
+                                prevState == null ? null : prevState.toDto(name),
+                                currState.toDto(name)));
+                    messagingTemplate.convertAndSendToUser(name,"/queue/private",msg);
+                }
                 break;
             }
             case "StateQuery" -> {
-                PokerDTO state = matchRoomService.getState(gameId);
+                Poker state = matchRoomService.getState(gameId);
                 HandDTO hand = matchRoomService.getPlayerHand(gameId, username);
-                if(state == null) {
-                    System.out.println("STATE IS NULL WHY THE FUCK IS IT NULL");
-                    return;
-                }
+                assert state != null;
 
-                Message<PokerDTO> msg = new Message<>(state);
-                messagingTemplate.convertAndSendToUser(username,"/queue/private",msg);
+                List<String> playerNames = state.getPlayerNames();
+
+                for(String name : playerNames) {
+                    Message<PokerDTO> msg = new Message<>(state.toDto(name));
+                    messagingTemplate.convertAndSendToUser(name,"/queue/private",msg);
+                }
                 break;
             }
             default -> {
@@ -89,28 +109,5 @@ public class MatchRoomController {
                 break;
             }
         }
-    }
-
-    @MessageMapping("/game/{gameId}/disconnect")
-    @SendTo("/topic/game/{gameId}")
-    public PokerDTO disconnect(@DestinationVariable Long gameId,Principal principal) {
-        if(principal == null) {
-            System.out.println("Cannot disconnect null user");
-            return null;
-        }
-        String username = principal.getName();
-        return matchRoomService.handleDisconnect(gameId,username);
-    }
-
-    @MessageMapping("/game/{gameId}/move")
-    @SendTo("/topic/game/{gameId}")
-    public PokerDTO requestMove(@DestinationVariable Long gameId,Principal principal,@Payload MoveDTO move) {
-        if (principal == null) {
-            System.out.println("ERROR: Principal is null. Is the user authenticated?");
-            return null;
-        }
-        String username = principal.getName();
-        System.out.println(username + " requested a move");
-        return matchRoomService.processMove(gameId,username,move);
     }
 }
