@@ -92,16 +92,16 @@ public class MatchRoomController {
                 break;
             }
             case "StateQuery" -> {
-                Poker state = matchRoomService.getState(gameId);
+                Poker curr = matchRoomService.getState(gameId);
                 Poker prev = matchRoomService.getPrevState(gameId);
-                assert state != null;
+                assert curr != null;
 
-                List<String> playerNames = state.getPlayerNames();
+                System.out.println(username);
+                PokerDTO prevDto = prev == null ? null : prev.toDto(username);
+                PokerDTO currDto = curr.toDto(username);
 
-                for(String name : playerNames) {
-                    Message<GameStateDTO> msg = new Message<>(new GameStateDTO(prev == null ? null : prev.toDto(name),state.toDto(name)));
-                    messagingTemplate.convertAndSendToUser(name,"/queue/private",msg);
-                }
+                Message<GameStateDTO> msg = new Message<>(new GameStateDTO(prevDto,currDto));
+                messagingTemplate.convertAndSendToUser(username,"/queue/private",msg);
                 break;
             }
             default -> {

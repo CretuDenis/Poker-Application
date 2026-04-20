@@ -2,6 +2,7 @@ package com.example.Poker.game;
 import com.example.Poker.game.Card;
 import com.example.Poker.dto.PokerPlayerDTO;
 import com.example.Poker.dto.HandDTO;
+import com.example.Poker.dto.CardDTO;
 
 public class PokerPlayer {
     public Integer balance;
@@ -49,7 +50,11 @@ public class PokerPlayer {
     }
 
     public PokerPlayerDTO toDto(String observer) {
-        return new PokerPlayerDTO(name,balance,bet, folded() ? null : new HandDTO(observer == this.name ? first.toDto() : null,observer == this.name ? second.toDto() : null));
+        CardDTO firstDto = observer.equals(this.name) ? first.toDto() : null;
+        CardDTO secondDto = observer.equals(this.name) ? second.toDto() : null;
+        HandDTO handDto = folded() ? null : new HandDTO(firstDto,secondDto);
+
+        return new PokerPlayerDTO(name,balance,bet,handDto);
     }
 
     public PokerPlayerDTO toDto() {

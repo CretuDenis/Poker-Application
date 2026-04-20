@@ -43,7 +43,7 @@ function Game() {
     const assetsLoaded = useRef(false);
 
     const [ gameState, setGameState ] = useState(null);
-    const [ prevGameState, setPrevGameState ] = useState(null);
+    const prevGameStateRef = useRef(null);
 
     const { gameId } = useParams();
     const [ raiseAmount, setRaiseAmount] = useState(0);
@@ -59,16 +59,15 @@ function Game() {
         assetsLoaded.current = true;
     },[]);
 
-
     const {sendMessage, connected, subscribe } = useWebSockets((message) => {
         switch(message.type) {
             case "GameStateDTO": {
                 setGameState(message.content.current);
-                setPrevGameState(message.content.previous);
+                prevGameStateRef.current = message.content.previous;
                 break;
             }
-            case "PokerDTO": {
-                setGameState(message.content);
+            default: {
+                console.log(`Intercepted unknown message type: ${message.type}`);
                 break;
             }
         }
@@ -143,7 +142,7 @@ function Game() {
 
     return (
         <div>
-            <Canvas currGameState={gameState} prevGameState={prevGameState} clientHand={clientHand()} />
+            <Canvas currGameState={gameState} prevGameState={prevGameStateRef.current} clientHand={clientHand()} />
                 <div style={{ position: 'relative', zIndex: 1 }}> 
                     <h1>Game {gameId}</h1> 
                     <h1>Hello {usernameFromToken()}</h1> 
@@ -171,7 +170,7 @@ function Game() {
                         : <></>
                     }
                     <pre>{JSON.stringify(gameState, null, 3)}</pre>
-                    <pre>{JSON.stringify(prevGameState, null, 3)}</pre>
+                    <pre>{JSON.stringify(prevGameStateRef.current, null, 3)}</pre>
                 </div>
         </div>
     );
