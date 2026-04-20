@@ -1,6 +1,13 @@
 import {useState, useEffect, useRef } from "react"
 import { usernameFromToken } from '../api'
 
+function randomInRange(min,max) {
+    const array = new Uint32Array(1);
+    window.crypto.getRandomValues(array);
+    const random = array[0] / (0xFFFFFFFF + 1);
+    return random * (max - min) + min;
+}
+
 const audioDirectory = 'Audio'
 const audioNames = [
     'cardPlace1',
@@ -244,13 +251,21 @@ const chipsNames = [
     'chipWhiteBlue',
 ];
 
-const chipValues = [
+const chipsValues = [
     100,
     50,
     25,
     10,
     1
 ];
+
+const chipsValuesDict = {
+    100: 'chipBlackWhite',
+    50: 'chipBlueWhite',
+    25: 'chipGreenWhite',
+    10: 'chipRedWhite',
+    1: 'chipWhiteBlue',
+}
 
 const crossProd = ([x1,y1,z1], [x2,y2,z2]) => [
     y1*z2 - z1*y2,
@@ -270,11 +285,6 @@ function Canvas({ currGameState,prevGameState,clientHand }) {
     const assetMapRef = useRef(new Map());
 
     const animationsRef = useRef([]);
-
-    const dealCardsAnimationsRef = useRef([]);
-    const communityCardsAnimationsRef = useRef([]);
-    const dealtRef = useRef(0);
-    const dealtCommunityRef = useRef(0);
     
     const [width, setWidth] = useState(null); 
     const [height, setHeight] = useState(null);
@@ -370,6 +380,11 @@ function Canvas({ currGameState,prevGameState,clientHand }) {
                 assetMap.set(audioName, audio); 
             }
 
+            for(const chipsName of chipsNames) {
+                const img = await loadImage(`/${chipsDirectory}/${chipsName}.png`);
+                assetMap.set(chipsName, img); 
+            }
+
             setAssetsLoaded(true);
         }
 
@@ -410,6 +425,14 @@ function Canvas({ currGameState,prevGameState,clientHand }) {
             const assetMap = assetMapRef.current;
             const index = Math.floor((Math.random() * 2 + 3));
             const sound = assetMap.get(audioNames[index]);
+            sound.currentTime = 0;
+            sound.play();
+        }
+
+        const playChipsCollide = () => {
+            const assetMap = assetMapRef.current;
+            const index = Math.floor((Math.random() * 1  + 2));
+            const sound = assetMap.get(`chipsCollide${index}`);
             sound.currentTime = 0;
             sound.play();
         }
@@ -525,6 +548,91 @@ function Canvas({ currGameState,prevGameState,clientHand }) {
 
                 if (riverAnimation)
                     animationsRef.current.push(riverAnimation);  
+            }
+
+
+            const getChipsTypesCount = (playerBet) => {
+                const chipsFreq = new Map();
+                for(const value of chipsValues)
+                    chipsFreq.set(value,0);
+
+                let bet = structuredClone(playerBet); 
+                let i = 0;
+                while(bet > 0 && i < chipsValues.length) {
+                    const currChipValue = chipsValues[i];
+                    const numChips = Math.floor(playerBet / currChipValue); 
+
+                    if (numChips === 0) {
+                        i++;
+                        continue;
+                    }
+
+                    const currCount = chipsFreq.get(currChipValue) ?? 0;
+                    chipsFreq.set(currChipValue,currCount + numChips);
+
+                    if (playerBet % currChipValue === 0) break; 
+                    playerBet -= Math.floor(numChips * currChipValue);
+                }
+                
+                return chipsFreq;
+            }
+
+            const chipScale = [0.1,0.1];
+
+            // TODO: WILL BREAK IF A PLAYER DISCONNECTS
+            chipsValues.sort((a, b) => b - a); 
+            for (let i = 0; i < players.length; i++) {
+                const playerBet = players[i].bet;
+                const prevPlayerBet = prevGameState !== null ? prevGameState.players[i].bet : 0;
+                const toBet = playerBet - prevPlayerBet;
+                
+                const toAddInPotChipsFreq = getChipsTypesCount(toBet);
+                const alreadyInPot = getChipsTypesCount(prevPlayerBet);
+
+                const chipsBasePos = [ ndcCardPositions[i][0] / 2, ndcCardPositions[i][1] / 2 ];
+
+                for (const [chipValue, chipCount] of toAddInPotChipsFreq) {
+                    if (chipCount === 0) continue;
+
+                    for (let j = 0; j < chipCount; j++) {
+                        const randomRadius = randomInRange(0,0.15); 
+                        const randomAngle = randomInRange(0,360); 
+                        const radians = randomAngle * Math.PI / 180;
+                        const sin = Math.sin(radians);
+                        const cos = Math.cos(radians);
+
+                        const styledChipPos = [
+                            chipsBasePos[0] + randomRadius * cos,
+                            chipsBasePos[1] + randomRadius * sin
+                        ];
+
+                        const chipImage = assetMap.get(chipsValuesDict[chipValue]);
+                        const animation = Animation.linearMotion(chipImage,ndcCardPositions[i],styledChipPos,easing,60,1,chipScale,0,playChipsCollide);
+                        animation.setLabel('bet');
+                        animationsRef.current.push(animation);
+                    }
+                }
+
+                for (const [chipValue, chipCount] of alreadyInPot) {
+                    if (chipCount === 0) continue;
+
+                    for (let j = 0; j < chipCount; j++) {
+                        const randomRadius = randomInRange(0,0.15); 
+                        const randomAngle = randomInRange(0,360); 
+                        const radians = randomAngle * Math.PI / 180;
+                        const sin = Math.sin(radians);
+                        const cos = Math.cos(radians);
+
+                        const styledChipPos = [
+                            chipsBasePos[0] + randomRadius * cos,
+                            chipsBasePos[1] + randomRadius * sin
+                        ];
+
+                        const chipImage = assetMap.get(chipsValuesDict[chipValue]);
+                        const animation = new Animation([new Frame(chipImage, 0,styledChipPos,0,chipScale)]);
+                        animationsRef.current.push(animation);
+                    }
+                }
             }
         }
 
