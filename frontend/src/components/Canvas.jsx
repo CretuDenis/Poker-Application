@@ -445,6 +445,7 @@ function Canvas({ currGameState,prevGameState,clientHand }) {
         }
 
         const generateAnimations = () => {
+            animationsRef.current = [];
             const roundPassedOrFirstRound = prevGameState === null || (prevGameState.round != currGameState.round);
             const shouldDrawStaticPlayerCards = animationsRef.current.length === 0 && prevGameState !== null && prevGameState.round === currGameState.round;
 
@@ -638,6 +639,7 @@ function Canvas({ currGameState,prevGameState,clientHand }) {
 
         generateAnimations();
         
+        ctx.clearRect(0, 0, width, height);
         function loop(timestamp) {
             const delta = (timestamp - lastTime) / 1000;
             lastTime = timestamp;
