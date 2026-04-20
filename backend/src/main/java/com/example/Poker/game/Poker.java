@@ -837,7 +837,7 @@ public class Poker {
                 .filter(p -> !p.folded())
                 .findFirst()
                 .orElse(null);
-            if (playerName.equals(remainingPlayer.name)) return PokerError.YOU_ARE_NOT_THE_REMAINING_PLAYER;
+            if (!playerName.equals(remainingPlayer.name)) return PokerError.YOU_ARE_NOT_THE_REMAINING_PLAYER;
 
             roundSetup();
             return PokerError.SUCCESS;

@@ -77,11 +77,10 @@ function Game() {
     useEffect(() => {
         if (!connected) return;
         sendMessage(`/app/game/${gameId}`,{ type: "StateQuery", content: null });
-        return () => sub.unsubscribe();
     }, [connected]);
 
     const handleDisconnect = () => {
-        sendMessage(`/app/game/${gameId}`,{});
+        sendMessage(`/app/game/${gameId}`, { type: 'DisconnectRequest', content: null });
         navigate("/");
     }
 
@@ -172,6 +171,7 @@ function Game() {
                         : <></>
                     }
                     <pre>{JSON.stringify(gameState, null, 3)}</pre>
+                    <pre>{JSON.stringify(prevGameState, null, 3)}</pre>
                 </div>
         </div>
     );

@@ -58,10 +58,10 @@ public class MatchRoomController {
         String type = node.get("type").asText();
         switch(type) {
             case "DisconnectRequest" -> {
-                Poker prevState = matchRoomService.getState(gameId);
                 Poker currState = matchRoomService.handleDisconnect(gameId,username);
 
                 if (currState == null) return;
+                Poker prevState = matchRoomService.getPrevState(gameId);
                 List<String> playerNames = currState.getPlayerNames();
 
                 for(String name : playerNames) {
@@ -75,11 +75,11 @@ public class MatchRoomController {
             }
             case "MoveDTO" -> {
                 MoveDTO move = objectMapper.treeToValue(node.get("content"), MoveDTO.class);
-                Poker prevState = matchRoomService.getState(gameId);
                 Poker currState = matchRoomService.processMove(gameId,username,move);
 
                 if (currState == null) return;
 
+                Poker prevState = matchRoomService.getPrevState(gameId);
                 List<String> playerNames = currState.getPlayerNames();
 
                 for(String name : playerNames) {
@@ -93,13 +93,13 @@ public class MatchRoomController {
             }
             case "StateQuery" -> {
                 Poker state = matchRoomService.getState(gameId);
-                HandDTO hand = matchRoomService.getPlayerHand(gameId, username);
+                Poker prev = matchRoomService.getPrevState(gameId);
                 assert state != null;
 
                 List<String> playerNames = state.getPlayerNames();
 
                 for(String name : playerNames) {
-                    Message<PokerDTO> msg = new Message<>(state.toDto(name));
+                    Message<GameStateDTO> msg = new Message<>(new GameStateDTO(prev == null ? null : prev.toDto(name),state.toDto(name)));
                     messagingTemplate.convertAndSendToUser(name,"/queue/private",msg);
                 }
                 break;

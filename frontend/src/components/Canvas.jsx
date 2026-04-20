@@ -81,11 +81,29 @@ class Animation {
         this.onEnd = onEnd;
         this.dependencies = [];
         this.keepOnFinish = false;
+        this.label = null;
     }
 
+    setLabel(name) {
+        this.label = name;
+    }
+    
+    canUpdate() {
+        for (const dependency of this.dependencies) {
+            if (!dependency.finished()) return false;
+        }
+        return true;
+    }
+
+    canDraw() {
+        for (const dependency of this.dependencies) {
+            if (!dependency.finished()) return false;
+        }
+        return true;
+    }
 
     finished() {
-        return this.currentFrameIdx === this.frames.length - 1;
+        return this.currentFrameIdx === this.frames.length - 1 && this.loopcount === 0;
     }
 
     addDependency(other) {
@@ -245,18 +263,13 @@ const normalize = ([x,y,z]) => {
     return [x / length, y / length, z / length];
 }
 
-const calculateAnimations = (curr,prev) => {
-    const animations = [];    
-    
 
-
-    return animations;
-}
-
-function Canvas({currGameState,prevGameState,clientHand }) {
+function Canvas({ currGameState,prevGameState,clientHand }) {
     const canvasRef = useRef(null);
     const ctxRef = useRef(null);
     const assetMapRef = useRef(new Map());
+
+    const animationsRef = useRef([]);
 
     const dealCardsAnimationsRef = useRef([]);
     const communityCardsAnimationsRef = useRef([]);
@@ -311,7 +324,6 @@ function Canvas({currGameState,prevGameState,clientHand }) {
 
             result.push([rotatedX + x, rotateY + y]);
         }
-        console.log(result);
         return result;
     };
     
@@ -394,20 +406,6 @@ function Canvas({currGameState,prevGameState,clientHand }) {
         const easing = (t) => 1 - 1 * (1-t) * (1-t);
         const cardScale = [0.15,0.30];
 
-        const shouldDealFlop = (curr,prev) => {
-            return prev !== null && curr.communityCards[0] !== null && prev.communityCards[0] === null;
-        }
-        const shouldDealTurn = (curr,prev) => {
-            return prev !== null && curr.communityCards[3] !== null && prev.communityCards[3] === null;
-        }
-        const shouldDealRiver = (curr,prev) => {
-            return prev !== null && curr.communityCards[4] !== null && prev.communityCards[4] === null;
-        }
-
-        const shouldDealPlayerCards = (curr,prev) => {
-            return prev === null || (prev.round != curr.round)
-        }
-
         const playCardSlideSound = () => {
             const assetMap = assetMapRef.current;
             const index = Math.floor((Math.random() * 2 + 3));
@@ -416,188 +414,138 @@ function Canvas({currGameState,prevGameState,clientHand }) {
             sound.play();
         }
 
-        if (shouldDealPlayerCards(currGameState,prevGameState)) {
-            dealtRef.current = 0;
-            dealCardsAnimationsRef.current = [];
-            for (let i = 0; i < players.length; i++) {
-                const playerName = players[i].name;
-
-                const [cardX,cardY] = ndcCardPositions[i];
-                const cardToCenter = [-cardX, -cardY, 0.0];
-                const tangentVec = normalize(crossProd(cardToCenter,[0,0,1]));
-                let randomAngle = Math.random() * 30 - 15;
-                const distanceOffset = 0.025;
-                
-                const styledCardPos = [
-                    cardX - (tangentVec[0] + cardToCenter[0]) * distanceOffset,
-                    cardY - (tangentVec[1] + cardToCenter[1]) * distanceOffset
-                ]; 
-
-                if (playerName === clientName) {
-                    const firstCard = clientHand.first;
-                    const firstImage = assetMap.get(cardToHash(firstCard));
-                    dealCardsAnimationsRef.current.push(Animation.linearMotion(firstImage,tableCenter,styledCardPos,easing,60,1,cardScale,randomAngle,playCardSlideSound));  
-                } else {
-                    dealCardsAnimationsRef.current.push(Animation.linearMotion(cardBackImg,tableCenter,styledCardPos,easing,60,1,cardScale,randomAngle,playCardSlideSound));  
-                }
+        const labelPresentIn = (animationArr,label) => {
+            for(const animation of animationArr) {
+                if (label == animation.label) return true;
             }
+            return false;
+        }
 
-            for (let i = 0; i < players.length; i++) {
-                const playerName = players[i].name;
+        const generateAnimations = () => {
+            const roundPassedOrFirstRound = prevGameState === null || (prevGameState.round != currGameState.round);
+            const shouldDrawStaticPlayerCards = animationsRef.current.length === 0 && prevGameState !== null && prevGameState.round === currGameState.round;
 
-                const [cardX,cardY] = ndcCardPositions[i];
+            for (let i = 0; i < 2 * players.length; i++) {
+                const playerIndex = i % players.length;
+                const passCount = Math.floor(i / players.length);
+                const playerName = players[playerIndex].name;
+
+                const [cardX,cardY] = ndcCardPositions[playerIndex];
                 const cardToCenter = [-cardX, -cardY, 0.0];
                 const tangentVec = normalize(crossProd(cardToCenter,[0,0,1]));
-                let randomAngle = Math.random() * 30 - 15;
-                const distanceOffset = 0.025;
+                const randomAngle = (Math.random() * 10 + 5) * (passCount === 0 ? -1 : 1);
+                const distanceOffset = (passCount === 0 ? -1 : 1) * 0.025;
                 
                 const styledCardPos = [
                     cardX + (tangentVec[0] + cardToCenter[0]) * distanceOffset,
                     cardY + (tangentVec[1] + cardToCenter[1]) * distanceOffset
                 ]; 
 
-                if (playerName === clientName) {
-                    const secondCard = clientHand.second;
-                    const secondImage = assetMap.get(cardToHash(secondCard));
-                    dealCardsAnimationsRef.current.push(Animation.linearMotion(secondImage,tableCenter,styledCardPos,easing,60,1,cardScale,randomAngle,playCardSlideSound));  
-                } else {
-                    dealCardsAnimationsRef.current.push(Animation.linearMotion(cardBackImg,tableCenter,styledCardPos,easing,60,1,cardScale,randomAngle,playCardSlideSound));  
-                }
-            }
-        } else if (dealCardsAnimationsRef.current.length === 0 && prevGameState !== null && prevGameState.round === currGameState.round) {
-            for (let i = 0; i < players.length; i++) {
-                const playerName = players[i].name;
-
-                const [cardX,cardY] = ndcCardPositions[i];
-                const cardToCenter = [-cardX, -cardY, 0.0];
-                const tangentVec = normalize(crossProd(cardToCenter,[0,0,1]));
-                let randomAngle = Math.random() * 30 - 15;
-                const distanceOffset = 0.025;
+                let animation = undefined;
+                const clientCard = passCount === 0 ? clientHand.first : clientHand.second;
+                const cardImage = playerName === clientName ? assetMap.get(cardToHash(clientCard)) : cardBackImg; 
                 
-                const styledCardPos = [
-                    cardX - (tangentVec[0] + cardToCenter[0]) * distanceOffset,
-                    cardY - (tangentVec[1] + cardToCenter[1]) * distanceOffset
-                ]; 
+                if (roundPassedOrFirstRound)
+                    animation = Animation.linearMotion(cardImage,tableCenter,styledCardPos,easing,60,1,cardScale,randomAngle,playCardSlideSound);
+                else if (shouldDrawStaticPlayerCards)
+                    animation = new Animation([new Frame(cardImage, 0, styledCardPos, randomAngle,cardScale)]);
 
-                if (playerName === clientName) {
-                    const firstCard = clientHand.first;
-                    const firstImage = assetMap.get(cardToHash(firstCard));
-                    const anim = new Animation([new Frame(firstImage, 0, styledCardPos, randomAngle,cardScale)]);
-                    dealCardsAnimationsRef.current.push(anim);  
-                } else {
-                    const anim = new Animation([new Frame(cardBackImg, 0, styledCardPos, randomAngle,cardScale)]);
-                    dealCardsAnimationsRef.current.push(anim);  
+                if (animation) {
+                    if (i !== 0) animation.addDependency(animationsRef.current[i-1]);
+                    animationsRef.current.push(animation);
                 }
             }
 
-            for (let i = 0; i < players.length; i++) {
-                const playerName = players[i].name;
+            const communityCards = currGameState.communityCards;
+            const communityCardsPos = sequentialRects(5,[0.2,0],cardScale[0]);
 
-                const [cardX,cardY] = ndcCardPositions[i];
-                const cardToCenter = [-cardX, -cardY, 0.0];
-                const tangentVec = normalize(crossProd(cardToCenter,[0,0,1]));
-                let randomAngle = Math.random() * 30 - 15;
-                const distanceOffset = 0.025;
-                
-                const styledCardPos = [
-                    cardX + (tangentVec[0] + cardToCenter[0]) * distanceOffset,
-                    cardY + (tangentVec[1] + cardToCenter[1]) * distanceOffset
-                ]; 
+            const shouldDealFlop = prevGameState !== null && currGameState.communityCards[0] !== null && prevGameState.communityCards[0] === null;
+            const shouldDrawStaticFlop = !labelPresentIn(animationsRef.current,'flop') && communityCards[0] !== null;
 
-                if (playerName === clientName) {
-                    const secondCard = clientHand.second;
-                    const secondImage = assetMap.get(cardToHash(secondCard));
-                    const anim = new Animation([new Frame(secondImage, 0, styledCardPos, randomAngle,cardScale)]);
-                    dealCardsAnimationsRef.current.push(anim);  
-                } else {
-                    const anim = new Animation([new Frame(cardBackImg, 0, styledCardPos, randomAngle,cardScale)]);
-                    dealCardsAnimationsRef.current.push(anim);  
+            for(let i = 0; i < 3 && (shouldDealFlop || shouldDrawStaticFlop); i++) {
+                const communityCard = communityCards[i];
+                const flopImage = assetMap.get(cardToHash(communityCard));
+                const randomAngle = Math.random() * 10 - 5;
+
+                let animation = undefined;
+                if (shouldDealFlop) {
+                    animation = Animation.linearMotion(flopImage,tableCenter,communityCardsPos[i],easing,60,1,cardScale,randomAngle,playCardSlideSound);
+                    animation.setLabel('flop');
+                } else if (shouldDrawStaticFlop) {
+                    animation = new Animation([new Frame(flopImage, 0, communityCardsPos[i],randomAngle,cardScale)]);
+                    animation.setLabel('flop');
+                }
+
+                if (animation) {
+                    if (i !== 0) {
+                        const lastIndex = animationsRef.current.length - 1;
+                        animation.addDependency(animationsRef.current[lastIndex]);
+                    } 
+                    animationsRef.current.push(animation);  
                 }
             }
 
-        }
-        
-        if (prevGameState !== null && currGameState.round > prevGameState.round)  {
-            dealtCommunityRef.current = 0;
-            communityCardsAnimationsRef.current = [];
-        }
-        
-        const communityCards = currGameState.communityCards;
-        const communityCardsPos = sequentialRects(5,[0.2,0],cardScale[0],30);
+            const shouldDealTurn = prevGameState !== null && currGameState.communityCards[3] !== null && prevGameState.communityCards[3] === null;
+            const shouldDrawStaticTurn = !labelPresentIn(animationsRef.current,'turn') && communityCards[3] !== null;
 
-        if (shouldDealFlop(currGameState,prevGameState)) {
-            for(let i = 0; i < 3; i++) {
-                const communityCard = communityCards[i];
-                const image = assetMap.get(cardToHash(communityCard));
-                const randomAngle = Math.random() * 10 - 5;
-                communityCardsAnimationsRef.current.push(Animation.linearMotion(image,tableCenter,communityCardsPos[i],easing,60,1,cardScale,randomAngle,playCardSlideSound));  
+            if (shouldDealTurn || shouldDrawStaticTurn) {
+                const turnCard = communityCards[3];
+                const turnImage = assetMap.get(cardToHash(turnCard));
+                const turnRandomAngle = Math.random() * 10 - 5;
+
+                let turnAnimation = undefined;
+                if (shouldDealTurn) {
+                    turnAnimation = Animation.linearMotion(turnImage,tableCenter,communityCardsPos[3],easing,60,1,cardScale,turnRandomAngle,playCardSlideSound);
+                    turnAnimation.setLabel('turn');
+                } else if (shouldDrawStaticTurn) {
+                    turnAnimation = new Animation([new Frame(turnImage, 0, communityCardsPos[3],turnRandomAngle,cardScale)]);
+                    turnAnimation.setLabel('turn');
+                }
+
+                if (turnAnimation)
+                    animationsRef.current.push(turnAnimation);  
             }
-        } else if (communityCardsAnimationsRef.current.length === 0 && communityCards[0] !== null) {
-            for(let i = 0; i < 3; i++) {
-                const communityCard = communityCards[i];
-                const image = assetMap.get(cardToHash(communityCard));
-                const randomAngle = Math.random() * 10 - 5;
-                const anim = new Animation([new Frame(image, 0, communityCardsPos[i],randomAngle,cardScale)]);
-                communityCardsAnimationsRef.current.push(anim);  
+
+            const shouldDealRiver = prevGameState !== null && currGameState.communityCards[4] !== null && prevGameState.communityCards[4] === null;
+            const shouldDrawStaticRiver = !labelPresentIn(animationsRef.current,'river') && communityCards[4] !== null;
+
+            if (shouldDealRiver || shouldDrawStaticRiver) {
+                const riverCard = communityCards[4];
+                const riverImage = assetMap.get(cardToHash(riverCard));
+                const riverRandomAngle = Math.random() * 10 - 5;
+
+                let riverAnimation = undefined;
+                if (shouldDealRiver) {
+                    riverAnimation = Animation.linearMotion(riverImage,tableCenter,communityCardsPos[4],easing,60,1,cardScale,riverRandomAngle,playCardSlideSound);
+                    riverAnimation.setLabel('river');
+                } else if (shouldDrawStaticRiver) {
+                    riverAnimation = new Animation([new Frame(riverImage, 0, communityCardsPos[4],riverRandomAngle,cardScale)]);
+                    riverAnimation.setLabel('river');
+                }
+
+                if (riverAnimation)
+                    animationsRef.current.push(riverAnimation);  
             }
-        }
-        
-        if (shouldDealTurn(currGameState, prevGameState)) {
-            const communityCard = communityCards[3];
-            const image = assetMap.get(cardToHash(communityCard));
-            const randomAngle = Math.random() * 10 - 5;
-            communityCardsAnimationsRef.current.push(Animation.linearMotion(image,tableCenter,communityCardsPos[3],easing,60,1,cardScale,randomAngle,playCardSlideSound));  
-        } else if (communityCardsAnimationsRef.current.length === 3 && communityCards[3] !== null) {
-            const communityCard = communityCards[3];
-            const image = assetMap.get(cardToHash(communityCard));
-            const randomAngle = Math.random() * 10 - 5;
-            const anim = new Animation([new Frame(image, 0, communityCardsPos[3],randomAngle,cardScale)]);
-            communityCardsAnimationsRef.current.push(anim);  
-        }
-        if (shouldDealRiver(currGameState, prevGameState)) {
-            const communityCard = communityCards[4];
-            const image = assetMap.get(cardToHash(communityCard));
-            const randomAngle = Math.random() * 10 - 5;
-            communityCardsAnimationsRef.current.push(Animation.linearMotion(image,tableCenter,communityCardsPos[4],easing,60,1,cardScale,randomAngle,playCardSlideSound));  
-        } else if (communityCardsAnimationsRef.current.length === 4 && communityCards[4] !== null) {
-            const communityCard = communityCards[4];
-            const image = assetMap.get(cardToHash(communityCard));
-            const randomAngle = Math.random() * 10 - 5;
-            const anim = new Animation([new Frame(image, 0, communityCardsPos[4],randomAngle,cardScale)]);
-            communityCardsAnimationsRef.current.push(anim);  
         }
 
+        generateAnimations();
+        
         function loop(timestamp) {
             const delta = (timestamp - lastTime) / 1000;
             lastTime = timestamp;
 
             ctx.clearRect(0, 0, width, height);
-            if (dealtRef.current < dealCardsAnimationsRef.current.length) {
-                dealCardsAnimationsRef.current[dealtRef.current].update(delta);
-                dealCardsAnimationsRef.current[dealtRef.current].draw(canvas,ctx);
 
-                if (dealCardsAnimationsRef.current[dealtRef.current].finished()) {
-                    dealtRef.current++; 
+            for (const animation of animationsRef.current) {
+                if (animation.canUpdate()) {
+                    animation.update(delta);
                 }
-            }
+            } 
 
-            for (const animation of dealCardsAnimationsRef.current) {
-                if (animation.finished())
+            for (const animation of animationsRef.current) {
+                if (animation.canDraw()) {
                     animation.draw(canvas,ctx);
-            }
-
-            if (dealtCommunityRef.current < communityCardsAnimationsRef.current.length) {
-                communityCardsAnimationsRef.current[dealtCommunityRef.current].update(delta);
-                communityCardsAnimationsRef.current[dealtCommunityRef.current].draw(canvas,ctx);
-
-                if (communityCardsAnimationsRef.current[dealtCommunityRef.current].finished()) {
-                    dealtCommunityRef.current++; 
                 }
-            }
-
-            for (const animation of communityCardsAnimationsRef.current) {
-                if (animation.finished())
-                    animation.draw(canvas,ctx);
             }
 
             for(let i = 0; i < namesPos.length; i++) {
@@ -608,7 +556,7 @@ function Canvas({currGameState,prevGameState,clientHand }) {
 
             animationId = requestAnimationFrame(loop);
         }
-        //animationId = requestAnimationFrame(loop);
+        animationId = requestAnimationFrame(loop);
         return () => cancelAnimationFrame(animationId);
     },[assetsLoaded,ctxRef,currGameState])
 
