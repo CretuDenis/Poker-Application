@@ -8,6 +8,7 @@ function randomInRange(min,max) {
     return random * (max - min) + min;
 }
 
+const fontDirectory = 'fonts'
 const audioDirectory = 'Audio'
 const audioNames = [
     'cardPlace1',
@@ -24,6 +25,14 @@ const audioNames = [
 
     'dieThrow1',
     'dieThrow2',
+]
+
+const fontNames = [
+    'JqkasWild-w1YD6'
+]
+
+const textureNames = [
+    'table_texture',
 ]
 
 class Frame {
@@ -60,8 +69,10 @@ class Frame {
     }
 }
 
-function drawText(canvas,ctx,str,color,[x,y],fontSize,fontName = 'Arial') {
+function drawText(canvas, ctx, str, [r, g, b], [x, y], fontSize, fontName = 'Arial') {
     ctx.save();
+
+    ctx.font = `${fontSize}px ${fontName}`;
 
     const metrics = ctx.measureText(str);
     const textWidth = metrics.width;
@@ -70,10 +81,14 @@ function drawText(canvas,ctx,str,color,[x,y],fontSize,fontName = 'Arial') {
     const screenX = (x + 1) * canvas.width / 2;
     const screenY = (y + 1) * canvas.height / 2;
 
-    ctx.font = `${fontSize}px ${fontName}`;
-    ctx.fillStyle = color;
-
     ctx.translate(screenX, screenY);
+
+    ctx.strokeStyle = `rgb(${255 - r}, ${255 - g}, ${255 - b})`;
+    ctx.lineWidth = 4;
+    ctx.lineJoin = 'round';
+
+    ctx.strokeText(str, -textWidth / 2, -textHeight / 2);
+    ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
     ctx.fillText(str, -textWidth / 2, -textHeight / 2);
 
     ctx.restore();
@@ -315,6 +330,54 @@ function Canvas({ currGameState,prevGameState,clientHand }) {
         return ndcResult;
     }
 
+    const normalizeAngle = (angle) => {
+        return angle - Math.floor(angle / 360) * 360;
+    }
+
+    const pointsOnSquare = (numPoints,length = 1) => {
+        let result = [];
+        const degreeInc = 360 / numPoints;
+        let currentAngle = 270;
+
+        for(let i = 0; i < numPoints; i++) {
+            currentAngle = normalizeAngle(currentAngle);
+            const currentRadians = currentAngle * Math.PI / 180;
+            const sin = -Math.sin(currentRadians);
+            const cos = Math.cos(currentRadians);
+
+            let pos;
+            if (currentAngle >= 45 && currentAngle < 135) {
+                pos = [cos, -length]; 
+            } else if (currentAngle >= 135 && currentAngle < 225) {
+                pos = [-length, sin]; 
+            } else if (currentAngle >= 225 && currentAngle < 315) {
+                pos = [cos, length]; 
+            } else {
+                pos = [length, sin]; 
+            }
+            result.push(pos);
+            currentAngle -= degreeInc;
+        }
+        return result;
+    }
+
+    const getPlayersInOrder = () => {
+        const clientName = usernameFromToken();
+        const players = currGameState.players;
+        const result = [];
+        let i = 0;
+        while (players[i].name !== clientName)
+            i++;
+        result.push(players[i]); 
+
+        while (result.length !== players.length) {
+            i = (i + 1) % players.length;
+            result.push(players[i]);
+        } 
+
+        return result;
+    }
+
     const sequentialRects = (numRects, [x, y], rectsWidth,padding = 0,rotation = 0) => {
         const boundingBoxWidth = (numRects + 1) * padding + numRects * rectsWidth;
         
@@ -385,6 +448,22 @@ function Canvas({ currGameState,prevGameState,clientHand }) {
                 assetMap.set(chipsName, img); 
             }
 
+            for(const fontName of fontNames) {
+                const font = new FontFace(fontName,`url(/${fontDirectory}/${fontName}.ttf)`);
+
+                const loadedFont = await font.load();
+                if (!loadedFont) {
+                    console.log(`Failed to load font: ${fontName}`);
+                    continue;
+                }
+                document.fonts.add(loadedFont);
+            }
+
+            for(const textureName of textureNames) {
+                const img = await loadImage(`/assets/${textureName}.jpg`);
+                assetMap.set(textureName, img); 
+            }
+
             setAssetsLoaded(true);
         }
 
@@ -405,12 +484,11 @@ function Canvas({ currGameState,prevGameState,clientHand }) {
 
         ctx.clearRect(0, 0, width, height);
 
-        const players = currGameState.players;
+        const players = getPlayersInOrder();
         const tableCenter = [0,0];
-        const tableRadius = 0.8;
 
-        const ndcCardPositions = positionsOnCircle(players.length,tableCenter,tableRadius + 0.1);        
-        const namesPos = positionsOnCircle(players.length,tableCenter,tableRadius - 0.15);
+        const ndcCardPositions = pointsOnSquare(players.length,0.9);
+        const namesPos = pointsOnSquare(players.length,0.70);
         
         const assetMap = assetMapRef.current;
         const cardBackImg = assetMap.get(backCard);
@@ -419,7 +497,7 @@ function Canvas({ currGameState,prevGameState,clientHand }) {
         let lastTime = performance.now();
         
         const easing = (t) => 1 - 1 * (1-t) * (1-t);
-        const cardScale = [0.15,0.30];
+        const cardScale = [0.25,0.40];
 
         const playCardSlideSound = () => {
             const assetMap = assetMapRef.current;
@@ -443,11 +521,23 @@ function Canvas({ currGameState,prevGameState,clientHand }) {
             }
             return false;
         }
+        
+        const angleBetween = ([x1,y1],[x2,y2]) => {
+            const l1 = Math.sqrt(x1 * x1 + y1 * y1);
+            const l2 = Math.sqrt(x2 * x2 + y2 * y2);
+            const cos = (x1 * x2 + y1 * y2) / (l1 * l2); 
+            return Math.acos(cos) * 180 / Math.PI;
+        }
+
+        const betsPos = [];
 
         const generateAnimations = () => {
             animationsRef.current = [];
+
             const roundPassedOrFirstRound = prevGameState === null || (prevGameState.round != currGameState.round);
             const shouldDrawStaticPlayerCards = animationsRef.current.length === 0 && prevGameState !== null && prevGameState.round === currGameState.round;
+
+            const sideVectors = [];
 
             for (let i = 0; i < 2 * players.length; i++) {
                 const playerIndex = i % players.length;
@@ -457,8 +547,12 @@ function Canvas({ currGameState,prevGameState,clientHand }) {
                 const [cardX,cardY] = ndcCardPositions[playerIndex];
                 const cardToCenter = [-cardX, -cardY, 0.0];
                 const tangentVec = normalize(crossProd(cardToCenter,[0,0,1]));
-                const randomAngle = (Math.random() * 10 + 5) * (passCount === 0 ? -1 : 1);
-                const distanceOffset = (passCount === 0 ? -1 : 1) * 0.025;
+                sideVectors.push(tangentVec);
+                const defaultAngle = Math.sign(cardX) * angleBetween([0,Math.sign(-cardY)], cardToCenter);
+                const randomAngle = randomInRange(0,15) * (passCount === 0 ? 1 : -1);
+
+                const angle = defaultAngle + randomAngle;
+                const distanceOffset = (passCount === 0 ? -1 : 1) * 0.055;
                 
                 const styledCardPos = [
                     cardX + (tangentVec[0] + cardToCenter[0]) * distanceOffset,
@@ -470,12 +564,12 @@ function Canvas({ currGameState,prevGameState,clientHand }) {
                 const cardImage = playerName === clientName ? assetMap.get(cardToHash(clientCard)) : cardBackImg; 
                 
                 if (roundPassedOrFirstRound)
-                    animation = Animation.linearMotion(cardImage,tableCenter,styledCardPos,easing,60,1,cardScale,randomAngle,playCardSlideSound);
+                    animation = Animation.linearMotion(cardImage,tableCenter,styledCardPos,easing,60,1,cardScale,angle,playCardSlideSound);
                 else if (shouldDrawStaticPlayerCards)
-                    animation = new Animation([new Frame(cardImage, 0, styledCardPos, randomAngle,cardScale)]);
+                    animation = new Animation([new Frame(cardImage, 0, styledCardPos,angle,cardScale)]);
 
                 if (animation) {
-                    if (i !== 0) animation.addDependency(animationsRef.current[i-1]);
+                    if (i !== 0 && !shouldDrawStaticPlayerCards) animation.addDependency(animationsRef.current[i-1]);
                     animationsRef.current.push(animation);
                 }
             }
@@ -551,7 +645,6 @@ function Canvas({ currGameState,prevGameState,clientHand }) {
                     animationsRef.current.push(riverAnimation);  
             }
 
-
             const getChipsTypesCount = (playerBet) => {
                 const chipsFreq = new Map();
                 for(const value of chipsValues)
@@ -584,19 +677,23 @@ function Canvas({ currGameState,prevGameState,clientHand }) {
             chipsValues.sort((a, b) => b - a); 
             for (let i = 0; i < players.length; i++) {
                 const playerBet = players[i].bet;
+                const playerBalance = players[i].balance;
                 const prevPlayerBet = prevGameState !== null ? prevGameState.players[i].bet : 0;
                 const toBet = playerBet - prevPlayerBet;
                 
                 const toAddInPotChipsFreq = getChipsTypesCount(toBet);
                 const alreadyInPot = getChipsTypesCount(prevPlayerBet);
+                const balanceChips = getChipsTypesCount(playerBalance);
 
                 const chipsBasePos = [ ndcCardPositions[i][0] / 2, ndcCardPositions[i][1] / 2 ];
+                const balanceChipsPos = [ ndcCardPositions[i][0], ndcCardPositions[i][1] ];
+                const maxBetRadius = 0.10;
 
                 for (const [chipValue, chipCount] of toAddInPotChipsFreq) {
                     if (chipCount === 0) continue;
 
                     for (let j = 0; j < chipCount; j++) {
-                        const randomRadius = randomInRange(0,0.15); 
+                        const randomRadius = randomInRange(0,maxBetRadius); 
                         const randomAngle = randomInRange(0,360); 
                         const radians = randomAngle * Math.PI / 180;
                         const sin = Math.sin(radians);
@@ -618,7 +715,7 @@ function Canvas({ currGameState,prevGameState,clientHand }) {
                     if (chipCount === 0) continue;
 
                     for (let j = 0; j < chipCount; j++) {
-                        const randomRadius = randomInRange(0,0.15); 
+                        const randomRadius = randomInRange(0,maxBetRadius); 
                         const randomAngle = randomInRange(0,360); 
                         const radians = randomAngle * Math.PI / 180;
                         const sin = Math.sin(radians);
@@ -634,9 +731,33 @@ function Canvas({ currGameState,prevGameState,clientHand }) {
                         animationsRef.current.push(animation);
                     }
                 }
+
+                const maxBalanceRadius = 0.10;
+                for (const [chipValue, chipCount] of balanceChips) {
+                    if (chipCount === 0) continue;
+
+                    for (let j = 0; j < chipCount; j++) {
+                        const randomRadius = randomInRange(0,maxBalanceRadius); 
+                        const randomAngle = randomInRange(0,360); 
+                        const radians = randomAngle * Math.PI / 180;
+                        const sin = Math.sin(radians);
+                        const cos = Math.cos(radians);
+                        
+                        const balancePosDistance = 0.3;
+
+                        const styledChipPos = [
+                            balanceChipsPos[0] + balancePosDistance * sideVectors[i][0] + randomRadius * cos,
+                            balanceChipsPos[1] + balancePosDistance * sideVectors[i][1] + randomRadius * sin, 
+                        ];
+
+                        const chipImage = assetMap.get(chipsValuesDict[chipValue]);
+                        const animation = new Animation([new Frame(chipImage, 0,styledChipPos,0,chipScale)]);
+                        animationsRef.current.push(animation);
+                    }
+                }
             }
         }
-
+        
         generateAnimations();
         
         ctx.clearRect(0, 0, width, height);
@@ -645,6 +766,8 @@ function Canvas({ currGameState,prevGameState,clientHand }) {
             lastTime = timestamp;
 
             ctx.clearRect(0, 0, width, height);
+            const backgrounImg = assetMap.get('table_texture');
+            ctx.drawImage(backgrounImg, 0, 0, canvas.width, canvas.height);
 
             for (const animation of animationsRef.current) {
                 if (animation.canUpdate()) {
@@ -659,9 +782,17 @@ function Canvas({ currGameState,prevGameState,clientHand }) {
             }
 
             for(let i = 0; i < namesPos.length; i++) {
+                const balanceOffset = 0.075;
+                const balancePos = [namesPos[i][0],namesPos[i][1] + balanceOffset ];
                 const playerName = players[i].name;
-                const color = playerName === currGameState.speaking ? 'red' : 'black';
-                drawText(canvas,ctx,playerName,color,namesPos[i],20);
+                const color = playerName === currGameState.speaking ? [255,0,0] : [255,255,255];
+                drawText(canvas,ctx,playerName,color,namesPos[i],30,'JqkasWild-w1YD6');
+                drawText(canvas,ctx,`Balance: ${players[i].balance}$`,color,balancePos,30,'JqkasWild-w1YD6');
+            }
+
+            for (let i = 0; i < players.length; i++) {
+                const betPos = [ndcCardPositions[i][0] / 2, ndcCardPositions[i][1] / 2];
+                drawText(canvas,ctx,`${players[i].bet}$`,[255,255,255],betPos,30,'JqkasWild-w1YD6');
             }
 
             animationId = requestAnimationFrame(loop);

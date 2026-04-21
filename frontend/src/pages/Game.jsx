@@ -4,31 +4,6 @@ import { useWebSockets } from "../hooks/useWebSockets"
 import { usernameFromToken } from '../api'
 import Canvas from "../components/Canvas.jsx"
 
-const audioDirectory = 'Audio'
-const audioNames = [
-    'cardPlace1',
-    'cardPlace2',
-    'cardPlace3',
-
-    'cardSlide1',
-    'cardSlide2',
-    'cardSlide3',
-
-    'chipsCollide1',
-    'chipsCollide2',
-    'chipsCollide3',
-
-    'dieThrow1',
-    'dieThrow2',
-]
-
-class Hand {
-    constructor(first = null,second = null) {
-        this.first = first;
-        this.second = second;
-    }
-}
-
 const getClientBalance = (gameState) => {
     if (gameState === null) return null;
     const clientName = usernameFromToken();
@@ -39,9 +14,6 @@ const getClientBalance = (gameState) => {
 }
 
 function Game() {
-    const assetMapRef = useRef(new Map());
-    const assetsLoaded = useRef(false);
-
     const [ gameState, setGameState ] = useState(null);
     const prevGameStateRef = useRef(null);
 
@@ -49,15 +21,6 @@ function Game() {
     const [ raiseAmount, setRaiseAmount] = useState(0);
 
     const navigate = useNavigate();
-
-    useEffect(() => {
-        const assetMap = assetMapRef.current;
-        for(const audioName of audioNames) {
-            const audio = new Audio(`/${audioDirectory}/${audioName}.ogg`);
-            assetMap.set(audioName, audio); 
-        }
-        assetsLoaded.current = true;
-    },[]);
 
     const {sendMessage, connected, subscribe } = useWebSockets((message) => {
         switch(message.type) {
@@ -102,18 +65,6 @@ function Game() {
             const currentSpeaking = gameState.speaking;
             if (clientName !== currentSpeaking) return;
 
-            const assetMap = assetMapRef.current;
-            if (currentSpeaking === clientName && ("CALL" || action === "RAISE" || action === "ALLIN")) {
-                const randomIndex = Math.floor(Math.random() * 2 + 1);
-                const sound = assetMap.get(`chipsCollide${randomIndex}`);
-                sound.currentTime = 0;
-                sound.play();
-            } else if (currentSpeaking === clientName && action === 'FOLD' && clientHand().first !== null) {
-                const randomIndex = Math.floor(Math.random() * 2 + 1);
-                const sound = assetMap.get(`cardSlide${randomIndex}`);
-                sound.currentTime = 0;
-                setHand(new Hand()); 
-            }
             const message = {
                 type : "MoveDTO",
                 content : {
@@ -140,12 +91,22 @@ function Game() {
         return true;
     }
 
+    const debug = false;
+
     return (
         <div>
             <Canvas currGameState={gameState} prevGameState={prevGameStateRef.current} clientHand={clientHand()} />
                 <div style={{ position: 'relative', zIndex: 1 }}> 
-                    <h1>Game {gameId}</h1> 
-                    <h1>Hello {usernameFromToken()}</h1> 
+                    {
+                        debug ?
+                            <div>
+                                <h1>Game {gameId}</h1> 
+                                <h1>Hello {usernameFromToken()}</h1> 
+                            </div>
+                            :
+                            <></>
+
+                    }
                     <button onClick = {handleAction("CHECK")}>Check</button>
                     <button onClick = {handleAction("CALL")}>Call</button>
                     <button onClick = {handleAction("RAISE")}>Raise</button>
@@ -169,8 +130,15 @@ function Game() {
                             </div>
                         : <></>
                     }
-                    <pre>{JSON.stringify(gameState, null, 3)}</pre>
-                    <pre>{JSON.stringify(prevGameStateRef.current, null, 3)}</pre>
+                    {
+                        debug ?
+                            <div>
+                                <pre>{JSON.stringify(gameState, null, 3)}</pre>
+                                <pre>{JSON.stringify(prevGameStateRef.current, null, 3)}</pre>
+                            </div>
+                            :
+                            <></>
+                    }
                 </div>
         </div>
     );
