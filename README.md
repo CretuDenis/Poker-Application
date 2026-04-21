@@ -1,6 +1,6 @@
 # Poker Fullstack Application
 Implemented multiplayer application for poker enjoyers.\
-Stack : SpringBoot for Backend, ReactJS for Frotend.\
+Stack : SpringBoot for Backend, ReactJS for Frotend.
 # Current features:
 1. Security guarantees and session based requesting using JWT tokens
 2. Real time multiplayer and bidirectional client-server communication using WebSockets
