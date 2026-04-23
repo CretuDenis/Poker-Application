@@ -46,19 +46,6 @@ function Game() {
         navigate("/");
     }
 
-    const clientHand = () => {
-        const clientName = usernameFromToken();
-        if (gameState === null) {
-            console.log("Cannot get user hand if gameState is null");
-            return null;
-        }
-        for(const player of gameState.players) {
-            if (player.name === clientName) return player.hand;
-        }
-        console.log("Client not found to retrieve the hand");
-        return null;
-    }
-
     const handleAction = (action) => {
         return () => {
             const clientName = usernameFromToken();
@@ -76,26 +63,11 @@ function Game() {
         }
     }
 
-    const shouldAskForReveal = () => {
-        if (gameState === null) return false;
-        const players = gameState.players;
-        let numActive = 0;
-        for(const player of players) {
-            if (player.hand !== null) numActive++;
-            if (numActive > 1) return false; 
-        }
-        const clientName = usernameFromToken();
-        for(const player of players) {
-            if (player.hand !== null && player.name !== clientName) return false;
-        }
-        return true;
-    }
-
     const debug = false;
 
     return (
         <div>
-            <Canvas currGameState={gameState} prevGameState={prevGameStateRef.current} clientHand={clientHand()} />
+            <Canvas currGameState={gameState} prevGameState={prevGameStateRef.current} />
                 <div style={{ position: 'relative', zIndex: 1 }}> 
                     {
                         debug ?
@@ -121,15 +93,6 @@ function Game() {
                     <button onClick = {handleAction("ALLIN")}>All in</button>
                     <button onClick = {handleAction("FOLD")}>Fold</button>
                     <button onClick = {handleDisconnect}>Disconnect</button>
-                    {
-                        shouldAskForReveal() ? 
-                            <div>
-                                <h1>Reveal?</h1> 
-                                <button onClick = {handleAction("REVEAL")}>Yes</button>
-                                <button onClick = {handleAction("DONT_REVEAL")}>No</button>
-                            </div>
-                        : <></>
-                    }
                     {
                         debug ?
                             <div>

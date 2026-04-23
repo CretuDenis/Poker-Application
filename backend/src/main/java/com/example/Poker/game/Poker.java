@@ -3,7 +3,6 @@ package com.example.Poker.game;
 import com.example.Poker.game.PokerPlayer;
 import com.example.Poker.game.CardDeck;
 import com.example.Poker.game.PokerScore;
-import com.example.Poker.game.PokerMessage;
 import com.example.Poker.dto.PokerDTO;
 import com.example.Poker.dto.HandDTO;
 import com.example.Poker.dto.PokerPlayerDTO;
@@ -29,7 +28,8 @@ public class Poker {
         INSUFICIENT_BALANCE,
         PLAYER_CANNOT_CHECK,
         PLAYER_CANNOT_FOLD,
-        YOU_ARE_NOT_THE_REMAINING_PLAYER
+        YOU_ARE_NOT_THE_REMAINING_PLAYER,
+        RAISE_AMOUNT_IS_NULL,
     }
 
     private enum CommunityCards {
@@ -51,6 +51,7 @@ public class Poker {
     private Integer buttonIndex;
     private Integer speakingIndex;
     private Integer raiseIndex;
+    private Integer pot;
     private BettingRound bettingRound;
     private CardDeck cards;
     private List<PokerPlayer> players;
@@ -80,6 +81,7 @@ public class Poker {
         }
 
         this.roundCount = other.roundCount;
+        this.pot = other.pot;
         this.smallBlind = other.smallBlind;
         this.buttonIndex = other.buttonIndex;
         this.speakingIndex = other.speakingIndex;
@@ -97,6 +99,8 @@ public class Poker {
         System.arraycopy(other.communityCards, 0, this.communityCards, 0, 5);
     }
 
+    
+
     private int getMaxBet() {
         int maxBet = 0;
         for(PokerPlayer player : players) {
@@ -107,11 +111,7 @@ public class Poker {
     }
 
     private int getPot() {
-        int pot = 0;
-        for(PokerPlayer player : players) {
-            pot += player.bet;
-        }
-        return pot;
+        return this.pot;
     }
 
     private int nextPlaying(int current) {
@@ -134,6 +134,7 @@ public class Poker {
 
     private void roundSetup() {
         cards = new CardDeck();
+        pot = 0;
         raiseIndex = null;
         clearCommunityCards();
         ++roundCount;
@@ -144,6 +145,7 @@ public class Poker {
             player.bet = 0;
             player.first = new Card(Card.Symbol.ACE,Card.Suit.CLUBS);
             player.second = new Card(Card.Symbol.ACE,Card.Suit.CLUBS);
+            player.spoken = false;
         } 
 
         int numPlayers = players.size();
@@ -192,6 +194,9 @@ public class Poker {
         if(!bigBlindPlayer.tryBet(smallBlind * 2)) {
             bigBlindPlayer.allIn();
         }
+
+        pot += smallBlindPlayer.bet;
+        pot += bigBlindPlayer.bet;
     } 
 
     private void dealCommunityCard() {
@@ -229,7 +234,7 @@ public class Poker {
         return true;
     }
 
-    private int getActivePlayers() {
+    public int getActivePlayers() {
         int count = 0;
         for(PokerPlayer player : players) {
             if(!player.folded())
@@ -720,6 +725,8 @@ public class Poker {
     }
 
     private PokerScore evaluateHand(PokerPlayer player) {
+        if (communityCards[0] == null || communityCards[3] == null || communityCards[4] == null) return new PokerScore();
+
         if(player.folded()) return new PokerScore();
 
         List<Card> hand = new ArrayList<Card>();
@@ -749,7 +756,7 @@ public class Poker {
         return handScore.get();
     }
 
-    private List<PokerPlayer> determineWinners(List<PokerPlayer> players,List<PokerScore> scores) {
+    private List<PokerPlayer> determineWinners(List<PokerScore> scores) {
         PokerScore max = new PokerScore();
         List<PokerPlayer> winners = new ArrayList<>();
 
@@ -778,6 +785,18 @@ public class Poker {
         return bettingRound == BettingRound.PRE_FLOP ? bigBlindIndex() : buttonIndex; 
     }
 
+    private boolean flopOnTable() {
+        return communityCards[0] != null && communityCards[1] != null && communityCards[2] != null;
+    }
+
+    private boolean turnOnTable() {
+        return communityCards[3] != null;
+    }
+
+    private boolean riverOnTable() {
+        return communityCards[4] != null;
+    }
+
     private void updateBettingRound() {
         switch(bettingRound) {
             case PRE_FLOP:
@@ -797,6 +816,20 @@ public class Poker {
         }
     }
 
+    private void dealFlop() {
+        communityCards[0] = cards.dealCard();
+        communityCards[1] = cards.dealCard();
+        communityCards[2] = cards.dealCard();
+    }
+
+    private void dealTurn() {
+        communityCards[3] = cards.dealCard();
+    }
+
+    private void dealRiver() {
+        communityCards[4] = cards.dealCard();
+    }
+
     public HandDTO getPlayerHand(String username) {
         for (PokerPlayer player : players) {
             if (player.name.equals(username) && !player.folded()) {
@@ -805,9 +838,55 @@ public class Poker {
         }
         return new HandDTO(null,null);
     }
+    
+    public boolean allActivePlayersSpoken() {
+        for(PokerPlayer player : players) {
+            if (player.folded()) continue;
+            if (!player.spoken) return false;
+        }
+
+        return true;
+    }
+
+    private boolean shouldFinishBettingRound() {
+        boolean existsActiveSeparatePot = players.stream()
+            .filter(p -> !p.folded() && p.balance == 0 && p.bet < getMaxBet())
+            .count() > 0;
+
+        boolean uncalledPlayersAreAllIn = true;
+
+        for(PokerPlayer player : players) {
+            if (player.folded()) continue;
+            if (player.bet < getMaxBet() && player.balance != 0) {
+                uncalledPlayersAreAllIn = false;
+                break;
+            } 
+        }
+
+        return allActivePlayersSpoken() && (allActiveBetsAreEqual() || uncalledPlayersAreAllIn);
+    }
+
+    public boolean shouldFinishHand() {
+        long activePlayers = players.stream()
+            .filter(p -> !p.folded())
+            .count();
+
+        long allInPlayers = players.stream()
+            .filter(p -> !p.folded() && p.balance == 0)
+            .count();
+
+        boolean shouldFinishBetting = shouldFinishBettingRound();
+        boolean finishHand = activePlayers == 1 || 
+            (shouldFinishBetting && 
+            (activePlayers - allInPlayers <= 1 || bettingRound == BettingRound.POST_RIVER)) ;
+        System.out.println("should finish hand " + finishHand);
+        
+        return finishHand;
+    }
 
     public PokerError handleMessage(String playerName,MoveDTO message) {
         PokerPlayer speakingPlayer = players.get(speakingIndex);
+
         if (!playerName.equals(speakingPlayer.name)) return PokerError.MESSAGE_REQUESTED_BY_NON_SPEAKING;
         if (speakingPlayer.folded()) return PokerError.MESSAGE_REQUESTED_BY_FOLDED;
 
@@ -816,10 +895,20 @@ public class Poker {
             int toBet = maxBet - speakingPlayer.bet; 
             if(toBet == 0) return PokerError.PLAYER_SHOULD_CHECK;
             if(!speakingPlayer.tryBet(toBet)) return PokerError.INSUFICIENT_BALANCE;
-        } else if (message.action().equals("RAISE") && message.amount() != null) {
+            pot += toBet;
+        } else if (message.action().equals("RAISE")) {
+            if (message.amount() == null) return PokerError.RAISE_AMOUNT_IS_NULL;
+
             Integer amount = message.amount();
-            if(!speakingPlayer.tryBet(amount)) return PokerError.INSUFICIENT_BALANCE;
-            raiseIndex = speakingIndex;
+            int maxBet = getMaxBet();
+            int toBet = maxBet - speakingPlayer.bet + amount;
+
+            if(!speakingPlayer.tryBet(toBet)) return PokerError.INSUFICIENT_BALANCE;
+            for (PokerPlayer player : players)
+                player.spoken = false;
+
+            //raiseIndex = speakingIndex;
+            pot += toBet;
         } else if (message.action().equals("CHECK")) {
             Integer maxBet = getMaxBet();        
             if(speakingPlayer.bet < maxBet) return PokerError.PLAYER_CANNOT_CHECK;
@@ -828,56 +917,49 @@ public class Poker {
             speakingPlayer.fold(); 
         } else if (message.action().equals("ALLIN")) {
             int maxBet = getMaxBet();
+            pot += speakingPlayer.balance;
             speakingPlayer.allIn();
             if (speakingPlayer.bet > maxBet) {
                 raiseIndex = speakingIndex;
             }
-        } else if (message.action().equals("REVEAL") || message.action().equals("DONT_REVEAL")) {
-            PokerPlayer remainingPlayer = players.stream()
-                .filter(p -> !p.folded())
-                .findFirst()
-                .orElse(null);
-            if (!playerName.equals(remainingPlayer.name)) return PokerError.YOU_ARE_NOT_THE_REMAINING_PLAYER;
-
-            roundSetup();
-            return PokerError.SUCCESS;
         }
 
-        if (getActivePlayers() == 1) {
-            int pot = getPot();
-            PokerPlayer remainingPlayer = players.stream()
-                .filter(p -> !p.folded())
-                .findFirst()
-                .orElse(null);
-            assert remainingPlayer != null : "Cannot find the remaining player even though it's impossible for him to be";
+        speakingPlayer.spoken = true;
 
-            remainingPlayer.claim(pot);
-            speakingIndex = nextPlaying(speakingIndex);
-            return PokerError.SUCCESS;
-        }
-
-        if(speakingIndex != lastToSpeakIndex() || !allActiveBetsAreEqual()) {
+        if (!shouldFinishBettingRound()) {
             speakingIndex = nextPlaying(speakingIndex);
             return PokerError.SUCCESS;
         } 
 
-        if (bettingRound != BettingRound.POST_RIVER) {
+        if (bettingRound != BettingRound.POST_RIVER && !shouldFinishHand()) {
             dealCommunityCard();
             updateBettingRound();
             speakingIndex = firstToSpeakIndex();
+
+            for(PokerPlayer player : players) {
+                if (player.folded()) continue;
+                player.spoken = false;
+            }
+
             raiseIndex = null;
             return PokerError.SUCCESS;
         }
 
-        List<PokerScore> scores = new ArrayList<>();
-        for(PokerPlayer player : players)
-            scores.add(evaluateHand(player));
+        return PokerError.SUCCESS; 
+    }
 
-        List<PokerPlayer> winners = determineWinners(players,scores);
-        assert winners.size() != 0 : "There must be atleast 1 winner";
+    private void distributePot() {
+        List<PokerScore> scores = new ArrayList<>();
+
+        for(PokerPlayer player : players) {
+            scores.add(evaluateHand(player));
+        }
+
+        List<PokerPlayer> winners = determineWinners(scores);
+        assert winners.size() != 0;
+        System.out.println(winners);
 
         int maxBet = getMaxBet();
-        int pot = getPot();
 
         if(winners.size() == 1) {
             PokerPlayer winningPlayer = winners.get(0);
@@ -910,21 +992,21 @@ public class Poker {
                 remainingWinner.claim(redistributedPot);
             }
         }
-            
-        roundSetup();
-
-        return PokerError.SUCCESS; 
     }
 
-    // doesn't check for existence
     public void removePlayer(String username) {      
-        players.removeIf(p -> p.name.equals(username));
-
-        for(PokerPlayer player : players) {
-            player.print();
+        PokerPlayer speakingPlayer = players.get(speakingIndex);
+        PokerPlayer buttonPlayer = players.get(buttonIndex);
+        if (username.equals(speakingPlayer.name)) {
+            speakingIndex = nextPlaying(speakingIndex);
         }
+        
+        if (username.equals(buttonPlayer.name)) {
+            buttonIndex = nextPlaying(buttonIndex);
+        }
+        players.removeIf(p -> p.name.equals(username));
     }
-
+    
     public PokerDTO toDto(String observer) {
         List<PokerPlayerDTO> playersDto = new ArrayList<>();
 
@@ -939,7 +1021,7 @@ public class Poker {
             }
         }
         
-        return new PokerDTO(playersDto,communityCardsDtos,players.get(buttonIndex).name,players.get(speakingIndex).name,roundCount);
+        return new PokerDTO(playersDto,communityCardsDtos,players.get(buttonIndex).name,players.get(speakingIndex).name,roundCount,pot);
     }
 
     public PokerDTO toDto() {
@@ -956,7 +1038,7 @@ public class Poker {
             }
         }
         
-        return new PokerDTO(playersDto,communityCardsDtos,players.get(buttonIndex).name,players.get(speakingIndex).name,roundCount);
+        return new PokerDTO(playersDto,communityCardsDtos,players.get(buttonIndex).name,players.get(speakingIndex).name,roundCount,pot);
     }
 
     public List<String> getPlayerNames() {
@@ -972,32 +1054,79 @@ public class Poker {
         return false;
     }
 
-    public void print() {
-        System.out.println("Round count: " + roundCount);
-        System.out.println("Small blind amount: " + smallBlind);
-        System.out.println("Button index: " + buttonIndex);
-        System.out.println("Button: " + players.get(buttonIndex).name);
-        System.out.println("Small: " + players.get(smallBlindIndex()).name);
-        System.out.println("Big: " + players.get(bigBlindIndex()).name);
-        System.out.println("Current speaking index: " + speakingIndex);
-        System.out.println("Speaking player: " + players.get(speakingIndex).name);
-        System.out.println("First to speak: " + players.get(firstToSpeakIndex()).name);
-        System.out.println("Last to speak: " + players.get(lastToSpeakIndex()).name);
-        System.out.println("Betting round: " + bettingRound.name());
+    public List<List<Poker>> getStatesToFinishHand() {
+        List<Poker> prevStates = new ArrayList<>();
+        List<Poker> nextStates = new ArrayList<>();
 
-        for (PokerPlayer player : players) {
-            System.out.println("");
-            player.print();
-        }
+        Poker current = this;
 
-        System.out.println("");
+        long activePlayers = players.stream()
+            .filter(p -> !p.folded())
+            .count();
         
-        System.out.println("Community cards: ");
-        for(Card card : communityCards) {
-            if(card != null)
-                card.print();
+        if (activePlayers == 1) {
+            Poker hiddenCardState = new Poker(current);
+            Poker shownCardState = new Poker(current);
+
+            prevStates.add(hiddenCardState);
+            nextStates.add(shownCardState);
+
+            Poker newRoundState = new Poker(shownCardState);
+            newRoundState.distributePot();
+            newRoundState.roundSetup();
+
+            prevStates.add(shownCardState);
+            nextStates.add(newRoundState);
+
+            return List.of(prevStates,nextStates);
         }
 
-        System.out.println("");
+        if (!flopOnTable()) {
+            Poker flopState = new Poker(current);
+            flopState.dealFlop();
+            prevStates.add(new Poker(current));
+            nextStates.add(flopState);
+            current = new Poker(flopState);
+        }
+        if (!turnOnTable()) {
+            Poker turnState = new Poker(current);
+            turnState.dealTurn();
+            prevStates.add(new Poker(current));
+            nextStates.add(turnState);
+            current = new Poker(turnState);
+        }
+        if (!riverOnTable()) {
+            Poker riverState = new Poker(current);
+            riverState.dealRiver();
+            prevStates.add(new Poker(current));
+            nextStates.add(riverState);
+            current = new Poker(riverState);
+        }
+
+        if (nextStates.size() == 0) {
+            Poker hiddenCardState = new Poker(current);
+            Poker shownCardState = new Poker(current);
+
+            prevStates.add(hiddenCardState);
+            nextStates.add(shownCardState);
+
+            Poker newRoundState = new Poker(shownCardState);
+            newRoundState.distributePot();
+            newRoundState.roundSetup();
+
+            prevStates.add(shownCardState);
+            nextStates.add(newRoundState);
+        } else {
+            Poker finalState = new Poker(current);
+            finalState.distributePot();
+            finalState.roundSetup();
+            prevStates.add(new Poker(current));
+            nextStates.add(finalState);
+        }
+    
+
+        assert prevStates.size() == nextStates.size();
+
+        return List.of(prevStates, nextStates);
     }
 }

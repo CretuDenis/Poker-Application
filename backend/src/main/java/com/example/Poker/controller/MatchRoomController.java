@@ -30,6 +30,8 @@ import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.PathVariable;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.concurrent.CompletableFuture;
+import org.springframework.scheduling.annotation.Async;
 
 import java.security.Principal;
 import java.util.ArrayList;
@@ -46,6 +48,7 @@ public class MatchRoomController {
         this.messagingTemplate = messagingTemplate;
         this.objectMapper = objectMapper;
     }
+
 
     @MessageMapping("/game/{gameId}")
     public void handleMessage(@DestinationVariable Long gameId,Principal principal,@Payload String rawMessage) throws Exception {
@@ -76,8 +79,13 @@ public class MatchRoomController {
             case "MoveDTO" -> {
                 MoveDTO move = objectMapper.treeToValue(node.get("content"), MoveDTO.class);
                 Poker currState = matchRoomService.processMove(gameId,username,move);
-
                 if (currState == null) return;
+                
+                if (currState.shouldFinishHand()) {
+                    System.out.println("Cutscene will be played");
+                    matchRoomService.finishHand(gameId, currState); 
+                    return;
+                }
 
                 Poker prevState = matchRoomService.getPrevState(gameId);
                 List<String> playerNames = currState.getPlayerNames();
@@ -96,7 +104,6 @@ public class MatchRoomController {
                 Poker prev = matchRoomService.getPrevState(gameId);
                 assert curr != null;
 
-                System.out.println(username);
                 PokerDTO prevDto = prev == null ? null : prev.toDto(username);
                 PokerDTO currDto = curr.toDto(username);
 

@@ -8,6 +8,7 @@ public class PokerPlayer {
     public Integer balance;
     public Integer bet;
     public String name;
+    public boolean spoken;
 
     public Card first,second;
 
@@ -15,6 +16,7 @@ public class PokerPlayer {
         this.balance = balance;
         this.bet = 0;
         this.name = name;
+        this.spoken = false;
     }
 
     public PokerPlayer(PokerPlayer other) {
@@ -50,15 +52,20 @@ public class PokerPlayer {
     }
 
     public PokerPlayerDTO toDto(String observer) {
+        if (folded())
+            return new PokerPlayerDTO(name,balance,bet,null); 
+
         CardDTO firstDto = observer.equals(this.name) ? first.toDto() : null;
         CardDTO secondDto = observer.equals(this.name) ? second.toDto() : null;
-        HandDTO handDto = folded() ? null : new HandDTO(firstDto,secondDto);
+        HandDTO handDto = new HandDTO(firstDto,secondDto);
 
         return new PokerPlayerDTO(name,balance,bet,handDto);
     }
 
     public PokerPlayerDTO toDto() {
-        return new PokerPlayerDTO(name,balance,bet, folded() ? null : new HandDTO(first.toDto(),second.toDto()));
+        if (folded())
+            return new PokerPlayerDTO(name,balance,bet,null); 
+        return new PokerPlayerDTO(name,balance,bet,new HandDTO(first.toDto(),second.toDto()));
     }
 
     public void print() {

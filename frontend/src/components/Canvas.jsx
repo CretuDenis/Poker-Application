@@ -8,6 +8,8 @@ function randomInRange(min,max) {
     return random * (max - min) + min;
 }
 
+const animationFPS = 30;
+
 const fontDirectory = 'fonts'
 const audioDirectory = 'Audio'
 const audioNames = [
@@ -294,41 +296,17 @@ const normalize = ([x,y,z]) => {
 }
 
 
-function Canvas({ currGameState,prevGameState,clientHand }) {
+function Canvas({ currGameState,prevGameState }) {
     const canvasRef = useRef(null);
     const ctxRef = useRef(null);
     const assetMapRef = useRef(new Map());
+    const gameOverRef = useRef(false);
 
     const animationsRef = useRef([]);
     
     const [width, setWidth] = useState(null); 
     const [height, setHeight] = useState(null);
     const [assetsLoaded,setAssetsLoaded] = useState(false);
-
-    // expects normalized coordinates
-    const positionsOnCircle = (numPlayers,[x,y] = [0,0],radius = 1.0) => {
-        let result = [];
-        let ndcResult = [];
-        const canvas = canvasRef.current;
-        const width = canvas.width;
-        const height = canvas.height;  
-        const aspectRatio = width / height;
-
-        for(let i = 0; i < numPlayers; i++) {
-            const [unitX,unitY] = [Math.cos(2 * Math.PI * i / numPlayers),Math.sin(2 * Math.PI * i / numPlayers)]
-            let normPos = undefined; 
-            if (aspectRatio > 1) {
-                normPos = [ x - (radius * unitX) / aspectRatio, y - (radius * unitY) ];
-            } else {
-                normPos = [ x - (radius * unitX), y - (radius * unitY) * aspectRatio ];
-            }
-            ndcResult.push(normPos);
-            const [normX,normY] = normPos;
-            const screenSpacePos = [(normX + 1) * width / 2, (normY + 1) * height / 2 ];
-            result.push(screenSpacePos);
-        }
-        return ndcResult;
-    }
 
     const normalizeAngle = (angle) => {
         return angle - Math.floor(angle / 360) * 360;
@@ -399,6 +377,11 @@ function Canvas({ currGameState,prevGameState,clientHand }) {
         }
         return result;
     };
+
+    useEffect(() => {
+        if (gameOverRef.current) 
+            navigate('/');
+    },[gameOverRef])
     
     // init
     useEffect(() => {
@@ -474,10 +457,25 @@ function Canvas({ currGameState,prevGameState,clientHand }) {
     useEffect(() => {
         if (!ctxRef.current) return;
         if (!assetsLoaded) return;
-        if (!currGameState) return;
-        if (!currGameState) return;
+        if (currGameState === null) {
+            navigate('/');
+            return;
+        }
 
         const clientName = usernameFromToken();
+
+        let clientFound = false;
+        for(const player of currGameState.players) {
+            if (player.name === clientName) {
+                clientFound = true;
+                break;
+            }
+        }
+        
+        if (!clientFound) {
+            gameOverRef.current = true;
+            return;
+        }
 
         const ctx = ctxRef.current;
         const canvas = canvasRef.current;
@@ -529,7 +527,7 @@ function Canvas({ currGameState,prevGameState,clientHand }) {
             return Math.acos(cos) * 180 / Math.PI;
         }
 
-        const betsPos = [];
+        let disconnectedPlayersChips = [];
 
         const generateAnimations = () => {
             animationsRef.current = [];
@@ -542,7 +540,6 @@ function Canvas({ currGameState,prevGameState,clientHand }) {
             for (let i = 0; i < 2 * players.length; i++) {
                 const playerIndex = i % players.length;
                 const passCount = Math.floor(i / players.length);
-                const playerName = players[playerIndex].name;
 
                 const [cardX,cardY] = ndcCardPositions[playerIndex];
                 const cardToCenter = [-cardX, -cardY, 0.0];
@@ -560,11 +557,12 @@ function Canvas({ currGameState,prevGameState,clientHand }) {
                 ]; 
 
                 let animation = undefined;
-                const clientCard = passCount === 0 ? clientHand.first : clientHand.second;
-                const cardImage = playerName === clientName ? assetMap.get(cardToHash(clientCard)) : cardBackImg; 
+                if (players[playerIndex].hand === null) continue;
+                const card = passCount === 0 ? players[playerIndex].hand.first : players[playerIndex].hand.second;
+                const cardImage = card !== null ? assetMap.get(cardToHash(card)) : cardBackImg; 
                 
                 if (roundPassedOrFirstRound)
-                    animation = Animation.linearMotion(cardImage,tableCenter,styledCardPos,easing,60,1,cardScale,angle,playCardSlideSound);
+                    animation = Animation.linearMotion(cardImage,tableCenter,styledCardPos,easing,animationFPS,1,cardScale,angle,playCardSlideSound);
                 else if (shouldDrawStaticPlayerCards)
                     animation = new Animation([new Frame(cardImage, 0, styledCardPos,angle,cardScale)]);
 
@@ -587,7 +585,7 @@ function Canvas({ currGameState,prevGameState,clientHand }) {
 
                 let animation = undefined;
                 if (shouldDealFlop) {
-                    animation = Animation.linearMotion(flopImage,tableCenter,communityCardsPos[i],easing,60,1,cardScale,randomAngle,playCardSlideSound);
+                    animation = Animation.linearMotion(flopImage,tableCenter,communityCardsPos[i],easing,animationFPS,1,cardScale,randomAngle,playCardSlideSound);
                     animation.setLabel('flop');
                 } else if (shouldDrawStaticFlop) {
                     animation = new Animation([new Frame(flopImage, 0, communityCardsPos[i],randomAngle,cardScale)]);
@@ -613,7 +611,7 @@ function Canvas({ currGameState,prevGameState,clientHand }) {
 
                 let turnAnimation = undefined;
                 if (shouldDealTurn) {
-                    turnAnimation = Animation.linearMotion(turnImage,tableCenter,communityCardsPos[3],easing,60,1,cardScale,turnRandomAngle,playCardSlideSound);
+                    turnAnimation = Animation.linearMotion(turnImage,tableCenter,communityCardsPos[3],easing,animationFPS,1,cardScale,turnRandomAngle,playCardSlideSound);
                     turnAnimation.setLabel('turn');
                 } else if (shouldDrawStaticTurn) {
                     turnAnimation = new Animation([new Frame(turnImage, 0, communityCardsPos[3],turnRandomAngle,cardScale)]);
@@ -634,7 +632,7 @@ function Canvas({ currGameState,prevGameState,clientHand }) {
 
                 let riverAnimation = undefined;
                 if (shouldDealRiver) {
-                    riverAnimation = Animation.linearMotion(riverImage,tableCenter,communityCardsPos[4],easing,60,1,cardScale,riverRandomAngle,playCardSlideSound);
+                    riverAnimation = Animation.linearMotion(riverImage,tableCenter,communityCardsPos[4],easing,animationFPS,1,cardScale,riverRandomAngle,playCardSlideSound);
                     riverAnimation.setLabel('river');
                 } else if (shouldDrawStaticRiver) {
                     riverAnimation = new Animation([new Frame(riverImage, 0, communityCardsPos[4],riverRandomAngle,cardScale)]);
@@ -673,12 +671,26 @@ function Canvas({ currGameState,prevGameState,clientHand }) {
 
             const chipScale = [0.1,0.1];
 
-            // TODO: WILL BREAK IF A PLAYER DISCONNECTS
+            const playerExists = (arr,playerName) => {
+                for (const player of arr) {
+                    if (player.name === playerName) return true;
+                }
+                return false;
+            }
+
             chipsValues.sort((a, b) => b - a); 
             for (let i = 0; i < players.length; i++) {
                 const playerBet = players[i].bet;
                 const playerBalance = players[i].balance;
-                const prevPlayerBet = prevGameState !== null ? prevGameState.players[i].bet : 0;
+                let prevPlayerBet = 0;
+                if (prevGameState !== null) {
+                    for(const prevPlayer of prevGameState.players) {
+                        if (prevPlayer.name === players[i].name) {
+                            prevPlayerBet = prevPlayer.bet;
+                            break;
+                        }
+                    }
+                }
                 const toBet = playerBet - prevPlayerBet;
                 
                 const toAddInPotChipsFreq = getChipsTypesCount(toBet);
@@ -705,7 +717,7 @@ function Canvas({ currGameState,prevGameState,clientHand }) {
                         ];
 
                         const chipImage = assetMap.get(chipsValuesDict[chipValue]);
-                        const animation = Animation.linearMotion(chipImage,ndcCardPositions[i],styledChipPos,easing,60,1,chipScale,0,playChipsCollide);
+                        const animation = Animation.linearMotion(chipImage,ndcCardPositions[i],styledChipPos,easing,animationFPS,1,chipScale,0,playChipsCollide);
                         animation.setLabel('bet');
                         animationsRef.current.push(animation);
                     }
@@ -756,6 +768,48 @@ function Canvas({ currGameState,prevGameState,clientHand }) {
                     }
                 }
             }
+
+            if (prevGameState) {
+                disconnectedPlayersChips = [];
+                const prevPlayers = prevGameState.players;
+                const prevNdcCardPositions = pointsOnSquare(prevPlayers.length,0.9);
+
+                for (let i = 0; i < prevPlayers.length; i++) {
+                    if (playerExists(players, prevPlayers[i].name)) continue; 
+                    if (prevPlayers[i].bet === 0) continue; 
+
+                    const disconnectedChips = getChipsTypesCount(prevPlayers[i].bet);
+
+                    const chipsBasePos = [ prevNdcCardPositions[i][0] / 2, prevNdcCardPositions[i][1] / 2 ];
+                    const maxBetRadius = 0.10;
+
+                    disconnectedPlayersChips.push({
+                        value: prevPlayers[i].bet,
+                        pos: chipsBasePos,
+                    });
+
+                    for (const [chipValue, chipCount] of disconnectedChips) {
+                        if (chipCount === 0) continue;
+
+                        for (let j = 0; j < chipCount; j++) {
+                            const randomRadius = randomInRange(0,maxBetRadius); 
+                            const randomAngle = randomInRange(0,360); 
+                            const radians = randomAngle * Math.PI / 180;
+                            const sin = Math.sin(radians);
+                            const cos = Math.cos(radians);
+
+                            const styledChipPos = [
+                                chipsBasePos[0] + randomRadius * cos,
+                                chipsBasePos[1] + randomRadius * sin
+                            ];
+
+                            const chipImage = assetMap.get(chipsValuesDict[chipValue]);
+                            const animation = new Animation([new Frame(chipImage, 0,styledChipPos,0,chipScale)]);
+                            animationsRef.current.push(animation);
+                        }
+                    }
+                }
+            }
         }
         
         generateAnimations();
@@ -791,15 +845,23 @@ function Canvas({ currGameState,prevGameState,clientHand }) {
             }
 
             for (let i = 0; i < players.length; i++) {
+                if (players[i].bet === 0) continue;
                 const betPos = [ndcCardPositions[i][0] / 2, ndcCardPositions[i][1] / 2];
                 drawText(canvas,ctx,`${players[i].bet}$`,[255,255,255],betPos,30,'JqkasWild-w1YD6');
             }
+
+            for (const entry of disconnectedPlayersChips) {
+                drawText(canvas,ctx,`${entry.value}$`,[255,255,255],entry.pos,30,'JqkasWild-w1YD6');
+            }
+
+            const roundTextPos = [-0.8, 0.8];
+            drawText(canvas,ctx,`Round ${currGameState.round}`,[255,255,255],roundTextPos,30,'JqkasWild-w1YD6');
 
             animationId = requestAnimationFrame(loop);
         }
         animationId = requestAnimationFrame(loop);
         return () => cancelAnimationFrame(animationId);
-    },[assetsLoaded,ctxRef,currGameState])
+    },[assetsLoaded,ctxRef,currGameState,prevGameState])
 
     return (
         <canvas id="canvas" ref={canvasRef} width={window.innerWidth} height={window.innerHeight} style={{
