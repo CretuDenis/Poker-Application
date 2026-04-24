@@ -76,7 +76,16 @@ function drawText(canvas, ctx, str, [r, g, b], [x, y], fontSize, fontName = 'Ari
 
     ctx.font = `${fontSize}px ${fontName}`;
 
-    const metrics = ctx.measureText(str);
+    const cachedWidth = textWidthCache.get(str);
+    let metrics = 0;
+
+    if (cachedWidth) {
+        metrics = cachedWidth;
+    } else {
+        metrics = ctx.measureText(str);
+        textWidthCache.set(str,metrics);
+    }
+
     const textWidth = metrics.width;
     const textHeight = fontSize;
 
@@ -284,6 +293,8 @@ const chipsValuesDict = {
     1: 'chipWhiteBlue',
 }
 
+const textWidthCache = new Map();
+
 const crossProd = ([x1,y1,z1], [x2,y2,z2]) => [
     y1*z2 - z1*y2,
     z1*x2 - x1*z2,
@@ -412,6 +423,7 @@ function Canvas({ currGameState,prevGameState }) {
     // asset loading
     useEffect(() => {
         const assetMap = assetMapRef.current;
+        if (assetsLoaded) return;
 
         const loadAssets = async () => {
             const cardBackImg = await loadImage(`/${cardsDirectory}/${backCard}.png`);
@@ -452,6 +464,17 @@ function Canvas({ currGameState,prevGameState }) {
 
         loadAssets();
     },[]);
+
+    const clearAnimations = () => {
+        const arr = animationsRef.current;
+        for (let i = 0; i < arr.length; i++) {
+            arr[i].dependencies = null;
+            arr[i].onBegin = null;
+            arr[i].onEnd = null;
+            arr[i] = null;
+        }
+        arr.length = 0;
+    };
         
     // rendering
     useEffect(() => {
@@ -530,7 +553,7 @@ function Canvas({ currGameState,prevGameState }) {
         let disconnectedPlayersChips = [];
 
         const generateAnimations = () => {
-            animationsRef.current = [];
+            clearAnimations();
 
             const roundPassedOrFirstRound = prevGameState === null || (prevGameState.round != currGameState.round);
             const shouldDrawStaticPlayerCards = animationsRef.current.length === 0 && prevGameState !== null && prevGameState.round === currGameState.round;
@@ -692,6 +715,7 @@ function Canvas({ currGameState,prevGameState }) {
                     }
                 }
                 const toBet = playerBet - prevPlayerBet;
+                if (toBet < 0 && playerBet === 0) continue;
                 
                 const toAddInPotChipsFreq = getChipsTypesCount(toBet);
                 const alreadyInPot = getChipsTypesCount(prevPlayerBet);
@@ -814,13 +838,13 @@ function Canvas({ currGameState,prevGameState }) {
         
         generateAnimations();
         
-        ctx.clearRect(0, 0, width, height);
+        const backgrounImg = assetMap.get('table_texture');
+
         function loop(timestamp) {
             const delta = (timestamp - lastTime) / 1000;
             lastTime = timestamp;
 
             ctx.clearRect(0, 0, width, height);
-            const backgrounImg = assetMap.get('table_texture');
             ctx.drawImage(backgrounImg, 0, 0, canvas.width, canvas.height);
 
             for (const animation of animationsRef.current) {
@@ -857,8 +881,12 @@ function Canvas({ currGameState,prevGameState }) {
             const roundTextPos = [-0.8, 0.8];
             drawText(canvas,ctx,`Round ${currGameState.round}`,[255,255,255],roundTextPos,30,'JqkasWild-w1YD6');
 
+            //drawText(canvas,ctx,`Framerate: ${Math.floor(end - begin)} ms`,[255,255,255],fpsPos,30,'JqkasWild-w1YD6');
+
+            //console.log(`${end - begin} ms`);
             animationId = requestAnimationFrame(loop);
         }
+
         animationId = requestAnimationFrame(loop);
         return () => cancelAnimationFrame(animationId);
     },[assetsLoaded,ctxRef,currGameState,prevGameState])

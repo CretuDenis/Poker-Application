@@ -2,6 +2,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useState, useEffect,useRef } from 'react';
 import { useWebSockets } from "../hooks/useWebSockets"
 import { usernameFromToken } from '../api'
+import '../App.css';
 import Canvas from "../components/Canvas.jsx"
 
 const getClientBalance = (gameState) => {
@@ -79,20 +80,21 @@ function Game() {
                             <></>
 
                     }
-                    <button onClick = {handleAction("CHECK")}>Check</button>
-                    <button onClick = {handleAction("CALL")}>Call</button>
-                    <button onClick = {handleAction("RAISE")}>Raise</button>
+                    <button className="casino-btn" onClick = {handleAction("CHECK")}>Check</button>
+                    <button className="casino-btn" onClick = {handleAction("CALL")}>Call</button>
+                    <button className="casino-btn" onClick = {handleAction("RAISE")}>Raise</button>
                     <input 
+                        className="casino-range"
                         type="range" 
                         min="1" 
                         max={getClientBalance(gameState)} 
                         value={raiseAmount}
                         onChange={(e) => setRaiseAmount(Number(e.target.value))} 
                     />
-                    <span>{raiseAmount}</span>
-                    <button onClick = {handleAction("ALLIN")}>All in</button>
-                    <button onClick = {handleAction("FOLD")}>Fold</button>
-                    <button onClick = {handleDisconnect}>Disconnect</button>
+                    <span className="raise-amount">{raiseAmount}</span>
+                    <button className="casino-btn" onClick = {handleAction("ALLIN")}>All in</button>
+                    <button className="casino-btn" onClick = {handleAction("FOLD")}>Fold</button>
+                    <button className="casino-btn danger" onClick = {handleDisconnect}>Disconnect</button>
                     {
                         debug ?
                             <div>
