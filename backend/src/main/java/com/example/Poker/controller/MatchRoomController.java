@@ -51,7 +51,7 @@ public class MatchRoomController {
 
 
     @MessageMapping("/game/{gameId}")
-    public void handleMessage(@DestinationVariable Long gameId,Principal principal,@Payload String rawMessage) throws Exception {
+    public void handleMessage(@DestinationVariable String gameId,Principal principal,@Payload String rawMessage) throws Exception {
         if(principal == null) {
             System.out.println("Game room cannot handle unauthentificated users");
             return;

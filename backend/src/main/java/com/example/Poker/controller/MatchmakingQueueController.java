@@ -29,6 +29,7 @@ public class MatchmakingQueueController {
         this.matchRoomService = matchRoomService; 
     }
 
+
     @MessageMapping("/queue")
     public void processQueueMessage(Principal principal,Message<QueueMessage> message) {
         if (principal == null) {
@@ -37,12 +38,28 @@ public class MatchmakingQueueController {
         }
 
         String username = principal.getName();
+        String[] words = message.content().info().split("\\s+");
+
         if (message.content().info().equals("join")) {
             queueService.processJoinRequest(username);
             messagingTemplate.convertAndSendToUser(username, "/queue/private",new Message<QueueMessage>(new QueueMessage("joined")));
         } else if (message.content().info().equals("leave")) {
             queueService.processLeaveRequest();
             messagingTemplate.convertAndSendToUser(username, "/queue/private",new Message<QueueMessage>(new QueueMessage("left")));
+        } else if (message.content().info().equals("create_private")) {
+            String lobbyId = queueService.processCreatePrivateLobby(username); 
+            if (lobbyId == null) {
+                messagingTemplate.convertAndSendToUser(username, "/queue/private",new Message<QueueMessage>(new QueueMessage("already in lobby")));
+                return;
+            } 
+            messagingTemplate.convertAndSendToUser(username, "/queue/private",Map.of("lobby",lobbyId));
+        } else if (words.length == 2 && words[0].equals("join")) {
+            String lobbyId = words[1];
+            queueService.processJoinPrivateLobby(lobbyId, username);
+            messagingTemplate.convertAndSendToUser(username, "/queue/private",Map.of("joined","ok"));
+        } else if (words.length == 2 && words[0].equals("leave")) {
+            String lobbyId = words[1];
+            queueService.processLeavePrivateLobby(lobbyId, username);
         } else {
             System.out.println("Invalid message recieved in the matchmaking queue");
         }

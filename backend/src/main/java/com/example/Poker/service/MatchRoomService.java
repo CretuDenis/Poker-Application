@@ -10,9 +10,11 @@ import com.example.Poker.dto.Message;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
-import java.util.concurrent.CompletableFuture;
 import org.springframework.scheduling.annotation.Async;
 
+import java.security.SecureRandom;
+import java.util.Base64;
+import java.util.concurrent.CompletableFuture;
 import java.util.List;
 import java.util.ArrayList;
 import java.util.concurrent.ConcurrentHashMap;
@@ -22,28 +24,29 @@ import java.util.Map;
 @Service
 public class MatchRoomService {
     @Autowired private SimpMessagingTemplate messagingTemplate;
-    private final ConcurrentHashMap<Long,Poker> activeGames;
-    private final ConcurrentHashMap<Long,Poker> prevGameState;
-    private Long gameId; 
+    private final ConcurrentHashMap<String,Poker> activeGames;
+    private final ConcurrentHashMap<String,Poker> prevGameState;
+
+    private static final SecureRandom secureRandom = new SecureRandom();
+    private static final Base64.Encoder base64Encoder = Base64.getUrlEncoder().withoutPadding();
 
     public MatchRoomService(SimpMessagingTemplate messagingTemplate) {
         this.messagingTemplate = messagingTemplate;
         this.activeGames = new ConcurrentHashMap<>();
         this.prevGameState = new ConcurrentHashMap<>();
-        this.gameId = 0L;
     }
 
-    public HandDTO getPlayerHand(Long gameId, String username) {
+    public HandDTO getPlayerHand(String gameId, String username) {
         Poker game = activeGames.get(gameId);
         if(game == null) return null;
         return game.getPlayerHand(username);
     }
 
-    public Poker getState(Long gameId) {
+    public Poker getState(String gameId) {
         return activeGames.get(gameId);
     }
 
-    public Poker handleDisconnect(Long gameId, String username) {
+    public Poker handleDisconnect(String gameId, String username) {
         Poker game = activeGames.get(gameId);
         if(game == null) return null;
         Poker prev = new Poker(game);
@@ -52,32 +55,45 @@ public class MatchRoomService {
         return game;
     }
     
-    public Long createGame(List<String> playerUsernames) {
-        Poker pokerGame = new Poker(playerUsernames);
-        activeGames.putIfAbsent(gameId,pokerGame);
-        Long currGameId = gameId;
-        gameId++;
-
-        for(String username : playerUsernames) {
-            messagingTemplate.convertAndSendToUser(username,"/queue/private", Map.of("game",currGameId));
-        }
-        return currGameId;
+    public String generateRandomString(int length) {
+        byte[] randomBytes = new byte[(length * 3) / 4];
+        secureRandom.nextBytes(randomBytes);
+        
+        String result = base64Encoder.encodeToString(randomBytes);
+        return result.substring(0, length);
     }
 
-    public void setPrevState(Long gameId, Poker state) {
+    public String createGame(List<String> playerUsernames) {
+        Poker pokerGame = new Poker(playerUsernames);
+        String gameId = generateRandomString(64);
+        Poker game = activeGames.get(gameId);
+        while(game != null) {
+            gameId = generateRandomString(64);
+            game = activeGames.get(gameId);
+        }
+        activeGames.put(gameId,pokerGame);
+
+        for(String username : playerUsernames) {
+            messagingTemplate.convertAndSendToUser(username,"/queue/private", Map.of("game",gameId));
+        }
+
+        return gameId;
+    }
+
+    public void setPrevState(String gameId, Poker state) {
         prevGameState.put(gameId,state);
     }
 
-    public void setCurrState(Long gameId, Poker state) {
+    public void setCurrState(String gameId, Poker state) {
         activeGames.put(gameId,state);
     }
 
-    public Poker getPrevState(Long gameId) {
+    public Poker getPrevState(String gameId) {
         return prevGameState.get(gameId);
     }
 
     @Async
-    public CompletableFuture<Void> finishHand(Long gameId, Poker currState) {
+    public CompletableFuture<Void> finishHand(String gameId, Poker currState) {
         List<String> playerNames = currState.getPlayerNames();
         List<List<Poker>> states = currState.getStatesToFinishHand();
         
@@ -146,7 +162,7 @@ public class MatchRoomService {
         return CompletableFuture.completedFuture(null);
     }
 
-    public Poker processMove(Long gameId,String username, MoveDTO move) {
+    public Poker processMove(String gameId,String username, MoveDTO move) {
         Poker selectedGame = activeGames.get(gameId);
         assert selectedGame != null : "How can the game state be null?";
         if (selectedGame.shouldFinishHand()) {
