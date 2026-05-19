@@ -1,6 +1,6 @@
 import { useState } from "react"
 import api from "../api"
-import { useNavigate } from "react-router-dom"
+import { useNavigate, Link } from "react-router-dom"
 import { ACCESS_TOKEN, REFRESH_TOKEN } from "../constants"
 import "./Form.css"
 
@@ -65,7 +65,7 @@ function Form({ method }) {
                 </form>
                 {method === "login" && (
                     <p className="form-footer">
-                        Don't have an account? <a className="form-link" href="/register">Register</a>
+                        Don't have an account? <Link className="form-link" to="/register">Register</Link>
                     </p>
                 )}
             </div>
